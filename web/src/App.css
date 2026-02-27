@@ -257,6 +257,53 @@ body {
   color: #f87171;
   border-color: #f87171;
 }
+.btn-edit {
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-edit:hover {
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+.btn-save {
+  margin-left: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background: #22c55e;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-save:hover {
+  background: #16a34a;
+}
+.edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0;
+}
+.edit-row input,
+.edit-row select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+.edit-row .checkbox-label {
+  font-size: 0.8rem;
+}
 
 .advice {
   padding: 0.75rem 1rem;

@@ -76,6 +76,31 @@ transactionsRouter.get("/", async (req: AuthRequest, res) => {
   }
 });
 
+transactionsRouter.patch("/:id", async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
+    if (!id) return res.status(400).json({ message: "ID inválido." });
+    const tx = await prisma.transaction.findFirst({ where: { id, userId } });
+    if (!tx) return res.status(404).json({ message: "Transação não encontrada." });
+    const { amount, type, description, categoryId, date } = req.body;
+    const data: Record<string, unknown> = {};
+    if (amount != null) data.amount = amount;
+    if (type != null) data.type = type;
+    if (description !== undefined) data.description = description;
+    if (categoryId !== undefined) data.categoryId = categoryId || null;
+    if (date != null) data.date = new Date(date);
+    const updated = await prisma.transaction.update({
+      where: { id },
+      data,
+    });
+    return res.json({ ...updated, amount: Number(updated.amount) });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao editar transação." });
+  }
+});
+
 transactionsRouter.delete("/:id", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
@@ -122,6 +147,7 @@ transactionsRouter.delete("/", async (req: AuthRequest, res) => {
   }
 });
 
+// Resumo: apenas transações (contas a pagar NUNCA entram aqui)
 transactionsRouter.get("/summary", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;

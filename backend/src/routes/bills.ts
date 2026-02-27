@@ -102,3 +102,43 @@ billsRouter.patch("/:id/pay", async (req: AuthRequest, res) => {
   }
 });
 
+billsRouter.patch("/:id", async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
+    if (!id) return res.status(400).json({ message: "ID inválido." });
+    const bill = await prisma.bill.findFirst({ where: { id, userId } });
+    if (!bill) return res.status(404).json({ message: "Conta não encontrada." });
+    const { description, amount, dueDate, categoryId, recurrence } = req.body;
+    const data: Record<string, unknown> = {};
+    if (description !== undefined) data.description = description;
+    if (amount != null) data.amount = amount;
+    if (dueDate != null) data.dueDate = new Date(dueDate);
+    if (categoryId !== undefined) data.categoryId = categoryId || null;
+    if (recurrence !== undefined) data.recurrence = recurrence;
+    const updated = await prisma.bill.update({
+      where: { id },
+      data,
+    });
+    return res.json({ ...updated, amount: Number(updated.amount) });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao editar conta." });
+  }
+});
+
+billsRouter.delete("/:id", async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
+    if (!id) return res.status(400).json({ message: "ID inválido." });
+    const bill = await prisma.bill.findFirst({ where: { id, userId } });
+    if (!bill) return res.status(404).json({ message: "Conta não encontrada." });
+    await prisma.bill.delete({ where: { id } });
+    return res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao excluir conta." });
+  }
+});
+

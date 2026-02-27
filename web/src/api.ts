@@ -95,6 +95,12 @@ export const api = {
   async payBill(id: string) {
     return request(`/bills/${id}/pay`, { method: 'PATCH' });
   },
+  async updateBill(id: string, data: { description?: string; amount?: number; dueDate?: string; categoryId?: string | null; recurrence?: 'NONE' | 'MONTHLY' | 'WEEKLY' }) {
+    return request(`/bills/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  },
+  async deleteBill(id: string) {
+    return request<void>(`/bills/${id}`, { method: 'DELETE' });
+  },
   async listTransactions(from?: string, to?: string, type?: 'INCOME' | 'EXPENSE') {
     const params = new URLSearchParams();
     if (from) params.append('from', from);
@@ -107,6 +113,9 @@ export const api = {
   },
   async createTransaction(input: { amount: number; type: 'INCOME' | 'EXPENSE'; description?: string; categoryId?: string; date?: string }) {
     return request('/transactions', { method: 'POST', body: JSON.stringify(input) });
+  },
+  async updateTransaction(id: string, data: { amount?: number; type?: 'INCOME' | 'EXPENSE'; description?: string; categoryId?: string | null; date?: string }) {
+    return request(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
   },
   async deleteTransaction(id: string) {
     return request<void>(`/transactions/${id}`, { method: 'DELETE' });
