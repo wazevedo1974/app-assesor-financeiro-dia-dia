@@ -30,7 +30,51 @@ type Bill = {
   paid: boolean
 }
 
+type CategoryKind = 'EXPENSE_FIXED' | 'EXPENSE_VARIABLE' | 'INCOME'
+
+type Category = {
+  id: string
+  name: string
+  kind: CategoryKind
+}
+
+type TransactionType = 'EXPENSE' | 'INCOME'
+
+type Transaction = {
+  id: string
+  amount: number
+  type: TransactionType
+  description?: string | null
+  date: string
+  categoryId?: string | null
+}
+
+type AdviceSeverity = 'info' | 'warning' | 'alert'
+
+type Advice = {
+  id: string
+  severity: AdviceSeverity
+  title: string
+  message: string
+}
+
+type AdviceResponse = {
+  period: {
+    from: string
+    to: string
+  }
+  totals: {
+    income: number
+    expense: number
+    balance: number
+    fixedExpenses: number
+    variableExpenses: number
+  }
+  advices: Advice[]
+}
+
 type View = 'login' | 'register' | 'dashboard'
+type Tab = 'overview' | 'transactions' | 'bills' | 'insights'
 
 function App() {
   const [view, setView] = useState<View>('login')
@@ -51,6 +95,31 @@ function App() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [bills, setBills] = useState<Bill[]>([])
   const [loadingDashboard, setLoadingDashboard] = useState(false)
+
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [categories, setCategories] = useState<Category[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
+  const [loadingBills, setLoadingBills] = useState(false)
+  const [advice, setAdvice] = useState<AdviceResponse | null>(null)
+  const [loadingAdvice, setLoadingAdvice] = useState(false)
+
+  const [newTxType, setNewTxType] = useState<TransactionType>('EXPENSE')
+  const [newTxAmount, setNewTxAmount] = useState('')
+  const [newTxDescription, setNewTxDescription] = useState('')
+  const [newTxCategoryId, setNewTxCategoryId] = useState<string>('')
+  const [newTxDate, setNewTxDate] = useState(() => {
+    const d = new Date()
+    return d.toISOString().slice(0, 10)
+  })
+
+  const [newBillDescription, setNewBillDescription] = useState('')
+  const [newBillAmount, setNewBillAmount] = useState('')
+  const [newBillDueDate, setNewBillDueDate] = useState(() => {
+    const d = new Date()
+    return d.toISOString().slice(0, 10)
+  })
+  const [newBillCategoryId, setNewBillCategoryId] = useState<string>('')
 
   useEffect(() => {
     if (token) {
@@ -163,6 +232,210 @@ function App() {
     }
   }
 
+  async function ensureCategories(authToken: string) {
+    if (categories.length > 0) return
+    try {
+      const res = await fetch(`${API_BASE_URL}/categories`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as Category[]
+        setCategories(data)
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  async function loadTransactionsList() {
+    if (!token) return
+    setLoadingTransactions(true)
+    try {
+      await ensureCategories(token)
+      const res = await fetch(`${API_BASE_URL}/transactions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as Transaction[]
+        setTransactions(data)
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoadingTransactions(false)
+    }
+  }
+
+  async function loadBillsList() {
+    if (!token) return
+    setLoadingBills(true)
+    try {
+      await ensureCategories(token)
+      const res = await fetch(`${API_BASE_URL}/bills?status=open`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as Bill[]
+        setBills(data)
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoadingBills(false)
+    }
+  }
+
+  async function loadAdviceData() {
+    if (!token) return
+    setLoadingAdvice(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/advice/financial`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as AdviceResponse
+        setAdvice(data)
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoadingAdvice(false)
+    }
+  }
+
+  function handleChangeTab(tab: Tab) {
+    setActiveTab(tab)
+    if (!token) return
+    if (tab === 'overview') {
+      loadDashboard()
+    } else if (tab === 'transactions') {
+      loadTransactionsList()
+    } else if (tab === 'bills') {
+      loadBillsList()
+    } else if (tab === 'insights') {
+      loadAdviceData()
+    }
+  }
+
+  async function handleCreateTransaction(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token) return
+    const amount = Number(newTxAmount.replace(',', '.'))
+    if (!amount || Number.isNaN(amount)) {
+      setMessage('Informe um valor válido para a transação.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          amount,
+          type: newTxType,
+          description: newTxDescription || undefined,
+          categoryId: newTxCategoryId || undefined,
+          date: newTxDate,
+        }),
+      })
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao criar transação.')
+        return
+      }
+
+      setNewTxAmount('')
+      setNewTxDescription('')
+      setNewTxCategoryId('')
+      setNewTxDate(new Date().toISOString().slice(0, 10))
+      await loadTransactionsList()
+      await loadDashboard()
+      setMessage('Transação criada com sucesso.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao criar transação.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleCreateBill(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token) return
+    const amount = Number(newBillAmount.replace(',', '.'))
+    if (!amount || Number.isNaN(amount)) {
+      setMessage('Informe um valor válido para a conta.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE_URL}/bills`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          description: newBillDescription,
+          amount,
+          dueDate: newBillDueDate,
+          categoryId: newBillCategoryId || undefined,
+        }),
+      })
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao criar conta.')
+        return
+      }
+
+      setNewBillDescription('')
+      setNewBillAmount('')
+      setNewBillCategoryId('')
+      setNewBillDueDate(new Date().toISOString().slice(0, 10))
+      await loadBillsList()
+      await loadDashboard()
+      setMessage('Conta criada com sucesso.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao criar conta.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handlePayBill(id: string) {
+    if (!token) return
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE_URL}/bills/${id}/pay`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao marcar conta como paga.')
+        return
+      }
+      await loadBillsList()
+      await loadDashboard()
+      setMessage('Conta marcada como paga.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao marcar conta como paga.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function handleLogout() {
     localStorage.removeItem('assesor_token')
     localStorage.removeItem('assesor_user_name')
@@ -270,66 +543,338 @@ function App() {
               </button>
             </div>
 
-            {loadingDashboard && <p className="message">Carregando dados...</p>}
+            <nav className="tabs">
+              <button
+                type="button"
+                className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`}
+                onClick={() => handleChangeTab('overview')}
+              >
+                Resumo
+              </button>
+              <button
+                type="button"
+                className={`tab-button ${activeTab === 'transactions' ? 'active' : ''}`}
+                onClick={() => handleChangeTab('transactions')}
+              >
+                Transações
+              </button>
+              <button
+                type="button"
+                className={`tab-button ${activeTab === 'bills' ? 'active' : ''}`}
+                onClick={() => handleChangeTab('bills')}
+              >
+                Contas
+              </button>
+              <button
+                type="button"
+                className={`tab-button ${activeTab === 'insights' ? 'active' : ''}`}
+                onClick={() => handleChangeTab('insights')}
+              >
+                Insights
+              </button>
+            </nav>
 
-            {summary && (
-              <section className="summary">
-                <div>
-                  <span>Receitas</span>
-                  <strong>
-                    {summary.totalIncome.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
-                  </strong>
-                </div>
-                <div>
-                  <span>Despesas</span>
-                  <strong>
-                    {summary.totalExpense.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
-                  </strong>
-                </div>
-                <div>
-                  <span>Saldo</span>
-                  <strong>
-                    {summary.balance.toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
-                  </strong>
-                </div>
-              </section>
-            )}
+            {message && <p className="message">{message}</p>}
 
-            <section className="bills">
-              <h3>Contas em aberto</h3>
-              {bills.length === 0 ? (
-                <p className="hint">Nenhuma conta em aberto encontrada.</p>
-              ) : (
-                <ul>
-                  {bills.map((bill) => (
-                    <li key={bill.id}>
-                      <div>
-                        <strong>{bill.description}</strong>
-                        <span>
-                          Vence em{' '}
-                          {new Date(bill.dueDate).toLocaleDateString('pt-BR')}
-                        </span>
-                      </div>
-                      <span>
-                        {bill.amount.toLocaleString('pt-BR', {
+            {activeTab === 'overview' && (
+              <>
+                {loadingDashboard && (
+                  <p className="hint">Atualizando resumo com seus dados...</p>
+                )}
+
+                {summary && (
+                  <section className="summary">
+                    <div>
+                      <span>Receitas</span>
+                      <strong>
+                        {summary.totalIncome.toLocaleString('pt-BR', {
                           style: 'currency',
                           currency: 'BRL',
                         })}
-                      </span>
-                    </li>
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Despesas</span>
+                      <strong>
+                        {summary.totalExpense.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Saldo</span>
+                      <strong>
+                        {summary.balance.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </strong>
+                    </div>
+                  </section>
+                )}
+
+                <section className="bills">
+                  <h3>Contas em aberto</h3>
+                  {bills.length === 0 ? (
+                    <p className="hint">Nenhuma conta em aberto encontrada.</p>
+                  ) : (
+                    <ul>
+                      {bills.map((bill) => (
+                        <li key={bill.id}>
+                          <div>
+                            <strong>{bill.description}</strong>
+                            <span>
+                              Vence em{' '}
+                              {new Date(bill.dueDate).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          <span>
+                            {bill.amount.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </>
+            )}
+
+            {activeTab === 'transactions' && (
+              <section className="transactions">
+                <h3>Transações</h3>
+                <form className="form" onSubmit={handleCreateTransaction}>
+                  <div className="form-row">
+                    <label>
+                      Tipo
+                      <select
+                        value={newTxType}
+                        onChange={(e) =>
+                          setNewTxType(e.target.value as TransactionType)
+                        }
+                      >
+                        <option value="EXPENSE">Despesa</option>
+                        <option value="INCOME">Receita</option>
+                      </select>
+                    </label>
+                    <label>
+                      Data
+                      <input
+                        type="date"
+                        value={newTxDate}
+                        onChange={(e) => setNewTxDate(e.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    Valor
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newTxAmount}
+                      onChange={(e) => setNewTxAmount(e.target.value)}
+                      placeholder="0,00"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Categoria
+                    <select
+                      value={newTxCategoryId}
+                      onChange={(e) => setNewTxCategoryId(e.target.value)}
+                    >
+                      <option value="">Selecione (opcional)</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Descrição
+                    <input
+                      type="text"
+                      value={newTxDescription}
+                      onChange={(e) => setNewTxDescription(e.target.value)}
+                      placeholder="Ex.: Uber, Mercado..."
+                    />
+                  </label>
+
+                  <button type="submit" disabled={loading}>
+                    {loading ? 'Salvando...' : 'Adicionar transação'}
+                  </button>
+                </form>
+
+                {loadingTransactions ? (
+                  <p className="hint">Carregando suas transações...</p>
+                ) : transactions.length === 0 ? (
+                  <p className="hint">Você ainda não registrou nenhuma transação.</p>
+                ) : (
+                  <ul className="transactions-list">
+                    {transactions.map((t) => {
+                      const categoryName =
+                        categories.find((c) => c.id === t.categoryId)?.name ||
+                        'Sem categoria'
+                      return (
+                        <li key={t.id}>
+                          <div>
+                            <strong>{t.description || categoryName}</strong>
+                            <span>
+                              {categoryName} •{' '}
+                              {new Date(t.date).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          <span
+                            className={
+                              t.type === 'INCOME'
+                                ? 'amount income'
+                                : 'amount expense'
+                            }
+                          >
+                            {t.type === 'INCOME' ? '+' : '-'}
+                            {t.amount.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {activeTab === 'bills' && (
+              <section className="bills-section">
+                <h3>Contas</h3>
+
+                <form className="form" onSubmit={handleCreateBill}>
+                  <label>
+                    Descrição
+                    <input
+                      type="text"
+                      value={newBillDescription}
+                      onChange={(e) => setNewBillDescription(e.target.value)}
+                      placeholder="Ex.: Aluguel, Internet..."
+                      required
+                    />
+                  </label>
+
+                  <div className="form-row">
+                    <label>
+                      Valor
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={newBillAmount}
+                        onChange={(e) => setNewBillAmount(e.target.value)}
+                        placeholder="0,00"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Vencimento
+                      <input
+                        type="date"
+                        value={newBillDueDate}
+                        onChange={(e) => setNewBillDueDate(e.target.value)}
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    Categoria
+                    <select
+                      value={newBillCategoryId}
+                      onChange={(e) => setNewBillCategoryId(e.target.value)}
+                    >
+                      <option value="">Selecione (opcional)</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button type="submit" disabled={loading}>
+                    {loading ? 'Salvando...' : 'Adicionar conta'}
+                  </button>
+                </form>
+
+                {loadingBills ? (
+                  <p className="hint">Carregando contas...</p>
+                ) : bills.length === 0 ? (
+                  <p className="hint">Nenhuma conta em aberto encontrada.</p>
+                ) : (
+                  <ul className="bills-list">
+                    {bills.map((bill) => (
+                      <li key={bill.id}>
+                        <div>
+                          <strong>{bill.description}</strong>
+                          <span>
+                            Vence em{' '}
+                            {new Date(bill.dueDate).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <div className="bills-actions">
+                          <span>
+                            {bill.amount.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </span>
+                          {!bill.paid && (
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() => handlePayBill(bill.id)}
+                            >
+                              Marcar paga
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {activeTab === 'insights' && (
+              <section className="insights">
+                <h3>Insights financeiros</h3>
+                {loadingAdvice && (
+                  <p className="hint">Buscando conselhos com base nos seus dados...</p>
+                )}
+                {!loadingAdvice && advice && advice.advices.length === 0 && (
+                  <p className="hint">
+                    Ainda não há insights gerados. Registre receitas, despesas e
+                    contas para ver recomendações personalizadas.
+                  </p>
+                )}
+                {!loadingAdvice &&
+                  advice &&
+                  advice.advices.map((item) => (
+                    <article
+                      key={item.id}
+                      className={`advice-card advice-${item.severity}`}
+                    >
+                      <h4>{item.title}</h4>
+                      <p>{item.message}</p>
+                    </article>
                   ))}
-                </ul>
-              )}
-            </section>
+              </section>
+            )}
           </>
         )}
       </main>
