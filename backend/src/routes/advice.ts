@@ -13,6 +13,8 @@ adviceRouter.get("/financial", async (req: AuthRequest, res) => {
 
     const ym = (req.query.ym as string | undefined) ?? undefined;
 
+    const now = new Date();
+
     let periodStart: Date;
     let periodEnd: Date;
 
@@ -35,7 +37,6 @@ adviceRouter.get("/financial", async (req: AuthRequest, res) => {
       periodStart = new Date(year, month - 1, 1, 0, 0, 0);
       periodEnd = new Date(year, month, 0, 23, 59, 59);
     } else {
-      const now = new Date();
       periodStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
       periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     }
