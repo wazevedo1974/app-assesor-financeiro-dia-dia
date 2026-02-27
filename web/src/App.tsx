@@ -74,7 +74,13 @@ type AdviceResponse = {
 }
 
 type View = 'login' | 'register' | 'dashboard'
-type Tab = 'overview' | 'transactions' | 'bills' | 'insights'
+type Tab = 'overview' | 'transactions' | 'bills' | 'categories' | 'insights'
+
+function kindLabel(kind: CategoryKind): string {
+  if (kind === 'EXPENSE_FIXED') return 'Fixo'
+  if (kind === 'EXPENSE_VARIABLE') return 'Variável'
+  return 'Receita'
+}
 
 function App() {
   const [view, setView] = useState<View>('login')
@@ -120,6 +126,15 @@ function App() {
     return d.toISOString().slice(0, 10)
   })
   const [newBillCategoryId, setNewBillCategoryId] = useState<string>('')
+
+  const [quickCommand, setQuickCommand] = useState('')
+  const [overviewAdvice, setOverviewAdvice] = useState<{
+    fixedExpenses: number
+    variableExpenses: number
+  } | null>(null)
+  const [loadingCategories, setLoadingCategories] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryKind, setNewCategoryKind] = useState<CategoryKind>('EXPENSE_VARIABLE')
 
   useEffect(() => {
     if (token) {
@@ -207,11 +222,14 @@ function App() {
     if (!authToken) return
     setLoadingDashboard(true)
     try {
-      const [summaryRes, billsRes] = await Promise.all([
+      const [summaryRes, billsRes, adviceRes] = await Promise.all([
         fetch(`${API_BASE_URL}/transactions/summary`, {
           headers: { Authorization: `Bearer ${authToken}` },
         }),
         fetch(`${API_BASE_URL}/bills?status=open`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }),
+        fetch(`${API_BASE_URL}/advice/financial`, {
           headers: { Authorization: `Bearer ${authToken}` },
         }),
       ])
@@ -225,6 +243,14 @@ function App() {
         const b = (await billsRes.json()) as Bill[]
         setBills(b)
       }
+
+      if (adviceRes.ok) {
+        const a = (await adviceRes.json()) as AdviceResponse
+        setOverviewAdvice({
+          fixedExpenses: a.totals.fixedExpenses,
+          variableExpenses: a.totals.variableExpenses,
+        })
+      }
     } catch (error) {
       console.error(error)
     } finally {
@@ -232,11 +258,12 @@ function App() {
     }
   }
 
-  async function ensureCategories(authToken: string) {
-    if (categories.length > 0) return
+  async function loadCategories() {
+    if (!token) return
+    setLoadingCategories(true)
     try {
       const res = await fetch(`${API_BASE_URL}/categories`, {
-        headers: { Authorization: `Bearer ${authToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
         const data = (await res.json()) as Category[]
@@ -244,14 +271,21 @@ function App() {
       }
     } catch (error) {
       console.error(error)
+    } finally {
+      setLoadingCategories(false)
     }
+  }
+
+  async function ensureCategories() {
+    if (categories.length > 0) return
+    await loadCategories()
   }
 
   async function loadTransactionsList() {
     if (!token) return
     setLoadingTransactions(true)
     try {
-      await ensureCategories(token)
+      await ensureCategories()
       const res = await fetch(`${API_BASE_URL}/transactions`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -270,7 +304,7 @@ function App() {
     if (!token) return
     setLoadingBills(true)
     try {
-      await ensureCategories(token)
+      await ensureCategories()
       const res = await fetch(`${API_BASE_URL}/bills?status=open`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -312,8 +346,96 @@ function App() {
       loadTransactionsList()
     } else if (tab === 'bills') {
       loadBillsList()
+    } else if (tab === 'categories') {
+      loadCategories()
     } else if (tab === 'insights') {
       loadAdviceData()
+    }
+  }
+
+  function parseQuickCommand(text: string): { amount: number; description: string } | null {
+    const t = text.trim()
+    if (!t) return null
+    const numRegex = /(?:R\$\s*)?(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*reais?/i
+    const match = t.match(numRegex)
+    if (!match) return null
+    const numStr = (match[1] || match[2] || '').replace(',', '.')
+    const amount = Number(numStr)
+    if (Number.isNaN(amount) || amount <= 0) return null
+    const description = t.replace(match[0], '').trim() || 'Despesa rápida'
+    return { amount, description }
+  }
+
+  async function handleQuickCommand(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token) return
+    const parsed = parseQuickCommand(quickCommand)
+    if (!parsed) {
+      setMessage('Digite algo como: "Abasteci R$ 50" ou "50 reais mercado"')
+      return
+    }
+    const variableCategory = categories.find((c) => c.kind === 'EXPENSE_VARIABLE')
+    try {
+      setLoading(true)
+      setMessage(null)
+      const res = await fetch(`${API_BASE_URL}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          amount: parsed.amount,
+          type: 'EXPENSE' as TransactionType,
+          description: parsed.description,
+          categoryId: variableCategory?.id || undefined,
+          date: new Date().toISOString().slice(0, 10),
+        }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao registrar.')
+        return
+      }
+      setQuickCommand('')
+      await loadDashboard()
+      await loadTransactionsList()
+      setMessage(`Despesa de R$ ${parsed.amount.toFixed(2)} registrada.`)
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro ao registrar despesa.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleCreateCategory(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token || !newCategoryName.trim()) return
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE_URL}/categories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: newCategoryName.trim(), kind: newCategoryKind }),
+      })
+      const body = (await res.json().catch(() => null)) as { message?: string } | Category | null
+      if (!res.ok) {
+        setMessage((body as { message?: string })?.message || 'Erro ao criar categoria.')
+        return
+      }
+      setNewCategoryName('')
+      setNewCategoryKind('EXPENSE_VARIABLE')
+      await loadCategories()
+      setMessage('Categoria criada com sucesso.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro ao criar categoria.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -543,6 +665,22 @@ function App() {
               </button>
             </div>
 
+            <section className="quick-command">
+              <form onSubmit={handleQuickCommand} className="quick-command-form">
+                <input
+                  type="text"
+                  value={quickCommand}
+                  onChange={(e) => setQuickCommand(e.target.value)}
+                  placeholder='Ex.: Abasteci R$ 50  ou  50 reais mercado'
+                  aria-label="Comando rápido de despesa"
+                />
+                <button type="submit" disabled={loading}>
+                  {loading ? '...' : 'Registrar'}
+                </button>
+              </form>
+              <p className="hint">Digite valor e descrição (ex.: &quot;Abasteci R$ 50&quot;) para registrar uma despesa do dia.</p>
+            </section>
+
             <nav className="tabs">
               <button
                 type="button"
@@ -564,6 +702,13 @@ function App() {
                 onClick={() => handleChangeTab('bills')}
               >
                 Contas
+              </button>
+              <button
+                type="button"
+                className={`tab-button ${activeTab === 'categories' ? 'active' : ''}`}
+                onClick={() => handleChangeTab('categories')}
+              >
+                Categorias
               </button>
               <button
                 type="button"
@@ -593,15 +738,38 @@ function App() {
                         })}
                       </strong>
                     </div>
-                    <div>
-                      <span>Despesas</span>
-                      <strong>
-                        {summary.totalExpense.toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </strong>
-                    </div>
+                    {overviewAdvice ? (
+                      <>
+                        <div>
+                          <span>Despesas fixas</span>
+                          <strong>
+                            {overviewAdvice.fixedExpenses.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Despesas variáveis</span>
+                          <strong>
+                            {overviewAdvice.variableExpenses.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </strong>
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <span>Despesas</span>
+                        <strong>
+                          {summary.totalExpense.toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </strong>
+                      </div>
+                    )}
                     <div>
                       <span>Saldo</span>
                       <strong>
@@ -691,7 +859,7 @@ function App() {
                       <option value="">Selecione (opcional)</option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name}
+                          {c.name} ({kindLabel(c.kind)})
                         </option>
                       ))}
                     </select>
@@ -719,15 +887,16 @@ function App() {
                 ) : (
                   <ul className="transactions-list">
                     {transactions.map((t) => {
-                      const categoryName =
-                        categories.find((c) => c.id === t.categoryId)?.name ||
-                        'Sem categoria'
+                      const cat = categories.find((c) => c.id === t.categoryId)
+                      const categoryLabel = cat
+                        ? `${cat.name} (${kindLabel(cat.kind)})`
+                        : 'Sem categoria'
                       return (
                         <li key={t.id}>
                           <div>
-                            <strong>{t.description || categoryName}</strong>
+                            <strong>{t.description || cat?.name || 'Sem categoria'}</strong>
                             <span>
-                              {categoryName} •{' '}
+                              {categoryLabel} •{' '}
                               {new Date(t.date).toLocaleDateString('pt-BR')}
                             </span>
                           </div>
@@ -800,7 +969,7 @@ function App() {
                       <option value="">Selecione (opcional)</option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name}
+                          {c.name} ({kindLabel(c.kind)})
                         </option>
                       ))}
                     </select>
@@ -843,6 +1012,57 @@ function App() {
                             </button>
                           )}
                         </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {activeTab === 'categories' && (
+              <section className="categories-section">
+                <h3>Categorias</h3>
+                <p className="hint">Crie categorias e use em transações e contas. Tipo: Fixo (despesas recorrentes), Variável (gastos do dia a dia), Receita.</p>
+                <form className="form" onSubmit={handleCreateCategory}>
+                  <label>
+                    Nome
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Ex.: Gasolina, Farmácia..."
+                      required
+                    />
+                  </label>
+                  <label>
+                    Tipo
+                    <select
+                      value={newCategoryKind}
+                      onChange={(e) =>
+                        setNewCategoryKind(e.target.value as CategoryKind)
+                      }
+                    >
+                      <option value="EXPENSE_FIXED">Despesa fixa</option>
+                      <option value="EXPENSE_VARIABLE">Despesa variável</option>
+                      <option value="INCOME">Receita</option>
+                    </select>
+                  </label>
+                  <button type="submit" disabled={loading}>
+                    {loading ? 'Salvando...' : 'Adicionar categoria'}
+                  </button>
+                </form>
+                {loadingCategories ? (
+                  <p className="hint">Carregando categorias...</p>
+                ) : categories.length === 0 ? (
+                  <p className="hint">Nenhuma categoria ainda. Crie uma acima.</p>
+                ) : (
+                  <ul className="categories-list">
+                    {categories.map((c) => (
+                      <li key={c.id}>
+                        <span className="category-name">{c.name}</span>
+                        <span className={`category-badge kind-${c.kind.toLowerCase()}`}>
+                          {kindLabel(c.kind)}
+                        </span>
                       </li>
                     ))}
                   </ul>
