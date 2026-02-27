@@ -68,7 +68,7 @@ billsRouter.get("/", async (req: AuthRequest, res) => {
 billsRouter.patch("/:id/pay", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const bill = await prisma.bill.findFirst({
       where: { id, userId },
