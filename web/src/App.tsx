@@ -1535,7 +1535,7 @@ function App() {
                         onChange={(e) => setNewTxCategoryId(e.target.value)}
                       >
                         <option value="">Selecione (opcional)</option>
-                        {categories.map((c) => (
+                        {filteredCategoriesForForm.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name} ({kindLabel(c.kind)})
                           </option>
@@ -1560,11 +1560,103 @@ function App() {
                 )}
 
                 {txViewMode === 'contas' && (
-                  <p className="hint">
-                    As contas do mês são calculadas a partir das categorias fixas e das
-                    contas cadastradas. Em breve vamos trazer um formulário dedicado
-                    aqui, separado dos gastos do dia a dia.
-                  </p>
+                  <>
+                    <form className="form" onSubmit={handleCreateBill}>
+                      <label>
+                        Descrição
+                        <input
+                          type="text"
+                          value={newBillDescription}
+                          onChange={(e) => setNewBillDescription(e.target.value)}
+                          placeholder="Ex.: Aluguel, Internet..."
+                          required
+                        />
+                      </label>
+                      <div className="form-row">
+                        <label>
+                          Valor
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={newBillAmount}
+                            onChange={(e) => setNewBillAmount(e.target.value)}
+                            placeholder="0,00"
+                            required
+                          />
+                        </label>
+                        <label>
+                          Vencimento
+                          <input
+                            type="date"
+                            value={newBillDueDate}
+                            onChange={(e) => setNewBillDueDate(e.target.value)}
+                            required
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        Categoria
+                        <select
+                          value={newBillCategoryId}
+                          onChange={(e) => setNewBillCategoryId(e.target.value)}
+                        >
+                          <option value="">Selecione (opcional)</option>
+                          {categories
+                            .filter((c) => c.kind === 'EXPENSE_FIXED' || c.kind === 'EXPENSE_VARIABLE')
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} ({kindLabel(c.kind)})
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={newBillRecurring}
+                          onChange={(e) => setNewBillRecurring(e.target.checked)}
+                        />{' '}
+                        Repetir todo mês (conta recorrente)
+                      </label>
+                      <button type="submit" disabled={loading}>
+                        {loading ? 'Salvando...' : 'Adicionar conta do mês'}
+                      </button>
+                    </form>
+                    {bills.length === 0 ? (
+                      <p className="hint">Nenhuma conta em aberto encontrada para este mês.</p>
+                    ) : (
+                      <ul className="bills-list">
+                        {bills.map((bill) => (
+                          <li key={bill.id}>
+                            <div>
+                              <strong>{bill.description}</strong>
+                              <span>
+                                Vence em{' '}
+                                {new Date(bill.dueDate).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                            <div className="bills-actions">
+                              <span>
+                                {bill.amount.toLocaleString('pt-BR', {
+                                  style: 'currency',
+                                  currency: 'BRL',
+                                })}
+                              </span>
+                              {!bill.paid && (
+                                <button
+                                  type="button"
+                                  className="secondary small"
+                                  onClick={() => handlePayBill(bill.id)}
+                                >
+                                  Marcar paga
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
                 )}
 
                 {loadingTransactions ? (
