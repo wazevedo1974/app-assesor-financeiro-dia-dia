@@ -603,6 +603,11 @@ function App() {
 
     recognition.onresult = (event: { results: Array<Array<{ transcript: string }>> }) => {
       const transcript = event.results[event.results.length - 1][0].transcript.trim()
+      // Assim que recebemos o resultado, paramos explicitamente a captura
+      recognition.stop()
+      setIsListening(false)
+      recognitionRef.current = null
+
       setQuickCommand(transcript)
       const parsed = parseQuickCommand(transcript)
       if (parsed) {
