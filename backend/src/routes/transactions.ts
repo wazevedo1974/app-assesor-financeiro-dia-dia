@@ -76,6 +76,29 @@ transactionsRouter.get("/", async (req: AuthRequest, res) => {
   }
 });
 
+transactionsRouter.delete("/:id", async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
+    if (!id) {
+      return res.status(400).json({ message: "ID inválido." });
+    }
+    const tx = await prisma.transaction.findFirst({
+      where: { id, userId },
+    });
+    if (!tx) {
+      return res.status(404).json({ message: "Transação não encontrada." });
+    }
+    await prisma.transaction.delete({
+      where: { id },
+    });
+    return res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao excluir transação." });
+  }
+});
+
 transactionsRouter.get("/summary", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;

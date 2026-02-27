@@ -163,9 +163,9 @@ function Resumo() {
 
       <div className="expense-sums">
         <p><strong>Somas do mês:</strong></p>
-        <p>Despesas realizadas (já pagas/registradas): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
-        <p>Total contas a pagar (ainda em aberto): <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
-        <p className="expense-sums-hint">Ao clicar em &quot;Marcar paga&quot; numa conta, o valor é registrado como despesa e a conta sai da lista. Não adicione o mesmo valor em Gastos.</p>
+        <p>Despesas realizadas (só o que você já pagou e registrou): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
+        <p>Total contas a pagar (vencimentos que ainda não pagou): <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
+        <p className="expense-sums-hint">Conta que vence no futuro só entra em &quot;Despesas realizadas&quot; quando você clicar &quot;Marcar paga&quot;. Se aparecer valor de conta que ainda não venceu, foi lançado por engano em Gastos — exclua em Transações → Gastos.</p>
       </div>
 
       {(overviewFilter === 'tudo' || overviewFilter === 'contas') && openBills.length > 0 && (
@@ -432,7 +432,10 @@ function Transacoes() {
             {gastosList.map((t) => (
               <li key={t.id}>
                 <span>{formatDateBR(t.date)} {t.description || '-'}</span>
-                <span className="expense">- R$ {t.amount.toFixed(2)}</span>
+                <span>
+                  <span className="expense">- R$ {t.amount.toFixed(2)}</span>
+                  <button type="button" className="btn-delete" onClick={async () => { try { await api.deleteTransaction(t.id); await loadGastos(); } catch (e) { console.error(e); } }}>Excluir</button>
+                </span>
               </li>
             ))}
           </ul>
@@ -491,7 +494,10 @@ function Transacoes() {
             {receitasList.map((t) => (
               <li key={t.id}>
                 <span>{formatDateBR(t.date)} {t.description || '-'}</span>
-                <span className="income">+ R$ {t.amount.toFixed(2)}</span>
+                <span>
+                  <span className="income">+ R$ {t.amount.toFixed(2)}</span>
+                  <button type="button" className="btn-delete" onClick={async () => { try { await api.deleteTransaction(t.id); await loadReceitas(); } catch (e) { console.error(e); } }}>Excluir</button>
+                </span>
               </li>
             ))}
           </ul>

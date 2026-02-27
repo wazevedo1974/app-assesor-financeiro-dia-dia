@@ -39,6 +39,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const text = await res.text();
     throw new Error(text || 'Erro na requisição');
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -106,6 +107,9 @@ export const api = {
   },
   async createTransaction(input: { amount: number; type: 'INCOME' | 'EXPENSE'; description?: string; categoryId?: string; date?: string }) {
     return request('/transactions', { method: 'POST', body: JSON.stringify(input) });
+  },
+  async deleteTransaction(id: string) {
+    return request<void>(`/transactions/${id}`, { method: 'DELETE' });
   },
   async listCategories() {
     return request<{ id: string; name: string; kind: string }[]>('/categories');
