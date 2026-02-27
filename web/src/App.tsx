@@ -148,6 +148,12 @@ function App() {
   const [loadingDashboard, setLoadingDashboard] = useState(false)
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = `${d.getMonth() + 1}`.padStart(2, '0')
+    return `${year}-${month}`
+  })
   const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
@@ -218,6 +224,18 @@ function App() {
     }
   }
 
+  function getMonthRange(ym: string): { from: string; to: string } {
+    const [yearStr, monthStr] = ym.split('-')
+    const year = Number(yearStr)
+    const month = Number(monthStr)
+    const start = new Date(year, month - 1, 1, 0, 0, 0)
+    const end = new Date(year, month, 0, 23, 59, 59)
+    return {
+      from: start.toISOString().slice(0, 10),
+      to: end.toISOString().slice(0, 10),
+    }
+  }
+
   async function handleAuth(
     event: React.FormEvent,
     mode: 'login' | 'register',
@@ -285,33 +303,39 @@ function App() {
     if (!authToken) return
     setLoadingDashboard(true)
     try {
-      const [summaryRes, billsRes, adviceRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/transactions/summary`, {
+      const [yearStr, monthStr] = selectedMonth.split('-')
+      const overviewRes = await fetch(
+        `${API_BASE_URL}/months/${yearStr}-${monthStr}/overview`,
+        {
           headers: { Authorization: `Bearer ${authToken}` },
-        }),
-        fetch(`${API_BASE_URL}/bills?status=open`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        }),
-        fetch(`${API_BASE_URL}/advice/financial`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        }),
-      ])
+        },
+      )
 
-      if (summaryRes.ok) {
-        const s = (await summaryRes.json()) as SummaryResponse
-        setSummary(s)
-      }
-
-      if (billsRes.ok) {
-        const b = (await billsRes.json()) as Bill[]
-        setBills(b)
-      }
-
-      if (adviceRes.ok) {
-        const a = (await adviceRes.json()) as AdviceResponse
+      if (overviewRes.ok) {
+        const data = (await overviewRes.json()) as {
+          totals: {
+            income: number
+            expense: number
+            balance: number
+            fixedExpenses: number
+            variableExpenses: number
+          }
+          bills: { items: Bill[] }
+        }
+        setSummary({
+          totalIncome: data.totals.income,
+          totalExpense: data.totals.expense,
+          balance: data.totals.balance,
+        })
+        setBills(
+          (data.bills.items || []).map((b) => ({
+            ...b,
+            amount: b.amount,
+          })),
+        )
         setOverviewAdvice({
-          fixedExpenses: a.totals.fixedExpenses,
-          variableExpenses: a.totals.variableExpenses,
+          fixedExpenses: data.totals.fixedExpenses,
+          variableExpenses: data.totals.variableExpenses,
         })
       }
     } catch (error) {
@@ -349,7 +373,11 @@ function App() {
     setLoadingTransactions(true)
     try {
       await ensureCategories()
-      const res = await fetch(`${API_BASE_URL}/transactions`, {
+      const { from, to } = getMonthRange(selectedMonth)
+      const params = new URLSearchParams()
+      params.set('from', from)
+      params.set('to', to)
+      const res = await fetch(`${API_BASE_URL}/transactions?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
@@ -368,7 +396,12 @@ function App() {
     setLoadingBills(true)
     try {
       await ensureCategories()
-      const res = await fetch(`${API_BASE_URL}/bills?status=open`, {
+      const { from, to } = getMonthRange(selectedMonth)
+      const params = new URLSearchParams()
+      params.set('status', 'open')
+      params.set('from', from)
+      params.set('to', to)
+      const res = await fetch(`${API_BASE_URL}/bills?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
@@ -386,7 +419,7 @@ function App() {
     if (!token) return
     setLoadingAdvice(true)
     try {
-      const res = await fetch(`${API_BASE_URL}/advice/financial`, {
+      const res = await fetch(`${API_BASE_URL}/advice/financial?ym=${selectedMonth}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
@@ -404,7 +437,11 @@ function App() {
     if (!token) return
     setLoadingCharts(true)
     try {
-      const res = await fetch(`${API_BASE_URL}/transactions/summary/by-category`, {
+      const { from, to } = getMonthRange(selectedMonth)
+      const params = new URLSearchParams()
+      params.set('from', from)
+      params.set('to', to)
+      const res = await fetch(`${API_BASE_URL}/transactions/summary/by-category?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
@@ -895,6 +932,30 @@ function App() {
               <div>
                 <h2>Olá, {userName ?? 'usuário'}</h2>
                 <p className="hint">Aqui está um resumo rápido das suas finanças.</p>
+              </div>
+              <div className="month-selector">
+                <label>
+                  Mês
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (!value) return
+                      setSelectedMonth(value)
+                      loadDashboard()
+                      if (activeTab === 'transactions') {
+                        loadTransactionsList()
+                      } else if (activeTab === 'bills') {
+                        loadBillsList()
+                      } else if (activeTab === 'charts') {
+                        loadChartData()
+                      } else if (activeTab === 'insights') {
+                        loadAdviceData()
+                      }
+                    }}
+                  />
+                </label>
               </div>
               <button type="button" className="secondary" onClick={handleLogout}>
                 Sair

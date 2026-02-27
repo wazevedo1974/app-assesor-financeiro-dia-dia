@@ -6,6 +6,8 @@ import { transactionsRouter } from "./routes/transactions";
 import { billsRouter } from "./routes/bills";
 import { categoriesRouter } from "./routes/categories";
 import { adviceRouter } from "./routes/advice";
+import { billTemplatesRouter } from "./routes/billTemplates";
+import { monthsRouter } from "./routes/months";
 
 const app = express();
 
@@ -21,6 +23,8 @@ app.use("/transactions", transactionsRouter);
 app.use("/bills", billsRouter);
 app.use("/categories", categoriesRouter);
 app.use("/advice", adviceRouter);
+app.use("/bill-templates", billTemplatesRouter);
+app.use("/months", monthsRouter);
 
 export default app;
 

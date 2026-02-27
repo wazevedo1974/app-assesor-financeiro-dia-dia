@@ -11,9 +11,34 @@ adviceRouter.get("/financial", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
 
-    const now = new Date();
-    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const ym = (req.query.ym as string | undefined) ?? undefined;
+
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    if (ym) {
+      const [yearStr, monthStr] = ym.split("-");
+      const year = Number(yearStr);
+      const month = Number(monthStr);
+      if (
+        !yearStr ||
+        !monthStr ||
+        !Number.isInteger(year) ||
+        !Number.isInteger(month) ||
+        month < 1 ||
+        month > 12
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Parâmetro ym inválido. Use o formato YYYY-MM." });
+      }
+      periodStart = new Date(year, month - 1, 1, 0, 0, 0);
+      periodEnd = new Date(year, month, 0, 23, 59, 59);
+    } else {
+      const now = new Date();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    }
 
     const wherePeriod: any = {
       userId,
