@@ -1,8 +1,8 @@
 .app {
   min-height: 100vh;
-  max-width: 480px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 2.5rem 1.5rem 3rem;
+  padding: 2.5rem 2rem 3rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -12,20 +12,33 @@
 }
 
 .app-header {
-  text-align: left;
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
 }
 
 .app-header h1 {
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   font-weight: 700;
 }
 
 .app-header p {
   font-size: 0.95rem;
   color: #cbd5f5;
+}
+
+.app-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.app-header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
 }
 
 .card {
@@ -146,8 +159,47 @@ button:disabled {
 .dashboard-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.dashboard-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dashboard-header-main h2 {
+  margin: 0;
+}
+
+.dashboard-header-main .hint {
+  margin-top: 0.25rem;
+}
+
+.dashboard-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.month-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.month-selector label {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.month-selector input[type='month'] {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  padding: 0.4rem 0.8rem;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e5e7eb;
 }
 
 .summary {
@@ -293,8 +345,10 @@ button:disabled {
 .tabs {
   margin-top: 1.25rem;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
 }
 
 .tab-button {
@@ -629,12 +683,35 @@ button.danger:hover {
 }
 
 @media (max-width: 400px) {
+  .app {
+    padding: 1.75rem 1rem 2.5rem;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-header-actions {
+    align-items: flex-start;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-header-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .summary {
     grid-template-columns: 1fr;
   }
 
   .tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-wrap: wrap;
   }
 
   .form-row {

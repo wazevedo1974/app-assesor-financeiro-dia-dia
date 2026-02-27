@@ -1036,12 +1036,16 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Assessor Financeiro - Web</h1>
-        <p>Conectado ao backend no Railway</p>
-        <button className="secondary" type="button" onClick={checkHealth}>
-          Testar conexão com API
-        </button>
-        {health && <p className="health">{health}</p>}
+        <div className="app-header-main">
+          <h1>Assessor Financeiro - Web</h1>
+          <p>Visualize e acompanhe suas finanças mês a mês.</p>
+        </div>
+        <div className="app-header-actions">
+          <button className="secondary" type="button" onClick={checkHealth}>
+            Testar conexão com API
+          </button>
+          {health && <p className="health">{health}</p>}
+        </div>
       </header>
 
       <main className="card">
@@ -1118,13 +1122,13 @@ function App() {
         ) : (
           <>
             <div className="dashboard-header">
-              <div>
+              <div className="dashboard-header-main">
                 <h2>Olá, {userName ?? 'usuário'}</h2>
                 <p className="hint">Aqui está um resumo rápido das suas finanças.</p>
               </div>
-              <div className="month-selector">
-                <label>
-                  Mês
+              <div className="dashboard-header-controls">
+                <div className="month-selector">
+                  <label>Mês</label>
                   <input
                     type="month"
                     value={selectedMonth}
@@ -1144,11 +1148,11 @@ function App() {
                       }
                     }}
                   />
-                </label>
+                </div>
+                <button type="button" className="secondary" onClick={handleLogout}>
+                  Sair
+                </button>
               </div>
-              <button type="button" className="secondary" onClick={handleLogout}>
-                Sair
-              </button>
             </div>
 
             <section className="quick-command">
