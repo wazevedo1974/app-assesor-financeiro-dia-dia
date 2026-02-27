@@ -68,7 +68,10 @@ billsRouter.get("/", async (req: AuthRequest, res) => {
 billsRouter.patch("/:id/pay", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0];
+    if (!id) {
+      return res.status(400).json({ message: "ID inválido." });
+    }
 
     const bill = await prisma.bill.findFirst({
       where: { id, userId },
