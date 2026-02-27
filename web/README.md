@@ -1,3 +1,19 @@
+# Assessor Financeiro (Web)
+
+## Deploy (Railway)
+
+Para o login e a API funcionarem, o **frontend** precisa saber a URL do **backend**:
+
+1. No Railway, abra o **serviço do backend** e copie a URL pública (ex.: `https://seu-backend.up.railway.app`).
+2. No **serviço do frontend**, em **Variables**, crie:
+   - **Nome:** `VITE_API_URL`
+   - **Valor:** a URL do backend **sem barra no final** (ex.: `https://seu-backend.up.railway.app`)
+3. Faça um novo deploy do frontend para a variável ser aplicada no build.
+
+Se `VITE_API_URL` estiver vazia ou apontar para um host inexistente, o login mostrará erro de conexão ("Failed to fetch" / "Não foi possível conectar ao servidor").
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

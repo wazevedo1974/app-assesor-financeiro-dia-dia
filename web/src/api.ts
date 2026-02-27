@@ -20,7 +20,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
   if (authToken) (headers as Record<string, string>)['Authorization'] = `Bearer ${authToken}`;
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch (err) {
+    const msg =
+      err instanceof TypeError && err.message === "Failed to fetch"
+        ? "Não foi possível conectar ao servidor. Verifique se a URL da API (VITE_API_URL) está correta no deploy e se o backend está no ar."
+        : err instanceof Error ? err.message : "Erro de rede.";
+    throw new Error(msg);
+  }
   if (res.status === 401) {
     setAuthToken(null);
     window.location.reload();
