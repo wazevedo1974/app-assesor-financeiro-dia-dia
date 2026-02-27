@@ -51,6 +51,17 @@ type Bill = {
   paid: boolean
 }
 
+type BillTemplate = {
+  id: string
+  description: string
+  amount: number
+  categoryId?: string | null
+  dueDay: number
+  recurrence: string
+  active: boolean
+  reminderDays: number
+}
+
 type CategoryKind = 'EXPENSE_FIXED' | 'EXPENSE_VARIABLE' | 'INCOME'
 
 type Category = {
@@ -146,6 +157,15 @@ function App() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [bills, setBills] = useState<Bill[]>([])
   const [loadingDashboard, setLoadingDashboard] = useState(false)
+  const [monthlyMetrics, setMonthlyMetrics] = useState<{
+    savingsRate: number
+    fixedPct: number
+    variablePct: number
+    cashAfterOpen: number
+    totalDue: number
+    totalPaid: number
+    totalOpen: number
+  } | null>(null)
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -158,6 +178,12 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [loadingBills, setLoadingBills] = useState(false)
+  const [billTemplates, setBillTemplates] = useState<BillTemplate[]>([])
+  const [loadingBillTemplates, setLoadingBillTemplates] = useState(false)
+  const [newTemplateDescription, setNewTemplateDescription] = useState('')
+  const [newTemplateAmount, setNewTemplateAmount] = useState('')
+  const [newTemplateDueDay, setNewTemplateDueDay] = useState<string>('1')
+  const [newTemplateCategoryId, setNewTemplateCategoryId] = useState<string>('')
   const [advice, setAdvice] = useState<AdviceResponse | null>(null)
   const [loadingAdvice, setLoadingAdvice] = useState(false)
 
@@ -319,8 +345,17 @@ function App() {
             balance: number
             fixedExpenses: number
             variableExpenses: number
+            savingsRate: number
+            fixedPct: number
+            variablePct: number
+            cashAvailableAfterOpenBills: number
           }
-          bills: { items: Bill[] }
+          bills: {
+            totalDue: number
+            totalPaid: number
+            totalOpen: number
+            items: Bill[]
+          }
         }
         setSummary({
           totalIncome: data.totals.income,
@@ -336,6 +371,15 @@ function App() {
         setOverviewAdvice({
           fixedExpenses: data.totals.fixedExpenses,
           variableExpenses: data.totals.variableExpenses,
+        })
+        setMonthlyMetrics({
+          savingsRate: data.totals.savingsRate,
+          fixedPct: data.totals.fixedPct,
+          variablePct: data.totals.variablePct,
+          cashAfterOpen: data.totals.cashAvailableAfterOpenBills,
+          totalDue: data.bills.totalDue,
+          totalPaid: data.bills.totalPaid,
+          totalOpen: data.bills.totalOpen,
         })
       }
     } catch (error) {
@@ -415,6 +459,25 @@ function App() {
     }
   }
 
+  async function loadBillTemplates() {
+    if (!token) return
+    setLoadingBillTemplates(true)
+    try {
+      await ensureCategories()
+      const res = await fetch(`${API_BASE_URL}/bill-templates`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as BillTemplate[]
+        setBillTemplates(data)
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoadingBillTemplates(false)
+    }
+  }
+
   async function loadAdviceData() {
     if (!token) return
     setLoadingAdvice(true)
@@ -466,6 +529,7 @@ function App() {
     } else if (tab === 'transactions') {
       loadTransactionsList()
     } else if (tab === 'bills') {
+      loadBillTemplates()
       loadBillsList()
     } else if (tab === 'categories') {
       loadCategories()
@@ -805,6 +869,131 @@ function App() {
     }
   }
 
+  async function handleCreateBillTemplate(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token) return
+    const amount = Number(newTemplateAmount.replace(',', '.'))
+    if (!amount || Number.isNaN(amount) || amount <= 0) {
+      setMessage('Informe um valor válido para o modelo.')
+      return
+    }
+    const dueDayNumber = Number(newTemplateDueDay)
+    if (!Number.isInteger(dueDayNumber) || dueDayNumber < 1 || dueDayNumber > 31) {
+      setMessage('Dia de vencimento deve estar entre 1 e 31.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE_URL}/bill-templates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          description: newTemplateDescription,
+          amount,
+          dueDay: dueDayNumber,
+          categoryId: newTemplateCategoryId || undefined,
+        }),
+      })
+
+      const body = (await res.json().catch(() => null)) as
+        | { message?: string }
+        | BillTemplate
+        | null
+
+      if (!res.ok) {
+        setMessage((body as { message?: string })?.message || 'Erro ao criar modelo.')
+        return
+      }
+
+      setNewTemplateDescription('')
+      setNewTemplateAmount('')
+      setNewTemplateDueDay('1')
+      setNewTemplateCategoryId('')
+      await loadBillTemplates()
+      setMessage('Modelo criado com sucesso.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao criar modelo.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleToggleTemplateActive(id: string, current: boolean) {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE_URL}/bill-templates/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ active: !current }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao atualizar modelo.')
+        return
+      }
+      await loadBillTemplates()
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao atualizar modelo.')
+    }
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    if (!token) return
+    if (!window.confirm('Remover este modelo de conta fixa?')) return
+    try {
+      const res = await fetch(`${API_BASE_URL}/bill-templates/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (res.status !== 204) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao remover modelo.')
+        return
+      }
+      await loadBillTemplates()
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao remover modelo.')
+    }
+  }
+
+  async function handleGenerateBillsForMonth() {
+    if (!token) return
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      params.set('month', selectedMonth)
+      const res = await fetch(`${API_BASE_URL}/bills/generate?${params.toString()}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const body = (await res.json().catch(() => null)) as { message?: string } | null
+      if (!res.ok) {
+        setMessage(body?.message || 'Erro ao gerar contas do mês.')
+        return
+      }
+      await loadBillsList()
+      await loadDashboard()
+      setMessage('Contas do mês geradas a partir dos modelos.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao gerar contas do mês.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handlePayBill(id: string) {
     if (!token) return
     try {
@@ -1095,8 +1284,61 @@ function App() {
                   </section>
                 )}
 
+                {monthlyMetrics && (
+                  <section className="summary-metrics">
+                    <p>
+                      Taxa de poupança do mês:{' '}
+                      <strong>{(monthlyMetrics.savingsRate * 100).toFixed(0)}%</strong>
+                    </p>
+                    <p>
+                      Distribuição de despesas sobre a renda:{' '}
+                      <strong>
+                        fixas {(monthlyMetrics.fixedPct * 100).toFixed(0)}% · variáveis{' '}
+                        {(monthlyMetrics.variablePct * 100).toFixed(0)}%
+                      </strong>
+                    </p>
+                  </section>
+                )}
+
                 <section className="bills">
                   <h3>Contas em aberto</h3>
+                  {monthlyMetrics && (
+                    <p className="hint">
+                      Previsto no mês:{' '}
+                      <strong>
+                        {monthlyMetrics.totalDue.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </strong>{' '}
+                      · já pago:{' '}
+                      <strong>
+                        {monthlyMetrics.totalPaid.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </strong>{' '}
+                      · em aberto:{' '}
+                      <strong>
+                        {monthlyMetrics.totalOpen.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </strong>
+                      {summary && (
+                        <>
+                          {' '}
+                          · saldo após contas em aberto:{' '}
+                          <strong>
+                            {monthlyMetrics.cashAfterOpen.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </strong>
+                        </>
+                      )}
+                    </p>
+                  )}
                   {bills.length === 0 ? (
                     <p className="hint">Nenhuma conta em aberto encontrada.</p>
                   ) : (
@@ -1254,7 +1496,116 @@ function App() {
 
             {activeTab === 'bills' && (
               <section className="bills-section">
-                <h3>Contas</h3>
+                <h3>Modelos de contas fixas</h3>
+
+                <form className="form" onSubmit={handleCreateBillTemplate}>
+                  <label>
+                    Descrição
+                    <input
+                      type="text"
+                      value={newTemplateDescription}
+                      onChange={(e) => setNewTemplateDescription(e.target.value)}
+                      placeholder="Ex.: Aluguel, Internet..."
+                      required
+                    />
+                  </label>
+
+                  <div className="form-row">
+                    <label>
+                      Valor
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={newTemplateAmount}
+                        onChange={(e) => setNewTemplateAmount(e.target.value)}
+                        placeholder="0,00"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Dia vencimento
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={newTemplateDueDay}
+                        onChange={(e) => setNewTemplateDueDay(e.target.value)}
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    Categoria
+                    <select
+                      value={newTemplateCategoryId}
+                      onChange={(e) => setNewTemplateCategoryId(e.target.value)}
+                    >
+                      <option value="">Selecione (opcional)</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({kindLabel(c.kind)})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button type="submit" disabled={loading}>
+                    {loading ? 'Salvando...' : 'Adicionar modelo'}
+                  </button>
+                </form>
+
+                {loadingBillTemplates ? (
+                  <p className="hint">Carregando modelos...</p>
+                ) : billTemplates.length === 0 ? (
+                  <p className="hint">
+                    Nenhum modelo cadastrado. Use o formulário acima para criar suas contas fixas.
+                  </p>
+                ) : (
+                  <ul className="bills-list">
+                    {billTemplates.map((tpl) => (
+                      <li key={tpl.id}>
+                        <div>
+                          <strong>{tpl.description}</strong>
+                          <span>
+                            Vence todo dia {tpl.dueDay}{' '}
+                            {tpl.active ? '(ativo)' : '(inativo)'}
+                          </span>
+                        </div>
+                        <div className="bills-actions">
+                          <span>
+                            {tpl.amount.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </span>
+                          <button
+                            type="button"
+                            className="secondary small"
+                            onClick={() => handleToggleTemplateActive(tpl.id, tpl.active)}
+                          >
+                            {tpl.active ? 'Desativar' : 'Ativar'}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary small danger"
+                            onClick={() => handleDeleteTemplate(tpl.id)}
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="bills-generate">
+                  <button type="button" className="secondary" onClick={handleGenerateBillsForMonth}>
+                    Gerar contas do mês selecionado
+                  </button>
+                </div>
+
+                <h3>Contas do mês</h3>
 
                 <form className="form" onSubmit={handleCreateBill}>
                   <label>
