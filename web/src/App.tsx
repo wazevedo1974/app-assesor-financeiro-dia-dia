@@ -97,25 +97,25 @@ type AdviceResponse = {
 type View = 'login' | 'register' | 'dashboard'
 type Tab = 'overview' | 'transactions' | 'bills' | 'categories' | 'charts' | 'insights'
 
-const VOICE_KEYWORDS: { keywords: string[]; categoryName: string }[] = [
-  { keywords: ['abasteci', 'posto', 'gasolina', 'combustível', 'combustivel'], categoryName: 'Transporte' },
-  { keywords: ['mercado', 'super', 'compras', 'supermercado'], categoryName: 'Mercado' },
-  { keywords: ['lanche', 'restaurante', 'comida', 'uber', 'ifood', 'delivery'], categoryName: 'Lazer' },
-  { keywords: ['farmácia', 'farmacia', 'remédio', 'remedio'], categoryName: 'Lazer' },
-  { keywords: ['aluguel', 'aluguel'], categoryName: 'Aluguel' },
-  { keywords: ['internet', 'net', 'wi-fi', 'wifi'], categoryName: 'Internet' },
-  { keywords: ['academia', 'academia'], categoryName: 'Academia' },
-  { keywords: ['salário', 'salario', 'receita', 'entrada'], categoryName: 'Salário' },
+const VOICE_KEYWORDS: { keywords: string[]; categoryName: string; label: string }[] = [
+  { keywords: ['abasteci', 'posto', 'gasolina', 'combustível', 'combustivel', 'de gasolina', 'com gasolina', 'em gasolina', 'gastei de gasolina', 'gastei com gasolina'], categoryName: 'Transporte', label: 'Gasolina' },
+  { keywords: ['mercado', 'super', 'compras', 'supermercado', 'no mercado', 'do mercado'], categoryName: 'Mercado', label: 'Mercado' },
+  { keywords: ['lanche', 'restaurante', 'comida', 'uber', 'ifood', 'delivery', 'almoço', 'almoco', 'jantar'], categoryName: 'Lazer', label: 'Alimentação' },
+  { keywords: ['farmácia', 'farmacia', 'remédio', 'remedio', 'medicamento'], categoryName: 'Lazer', label: 'Farmácia' },
+  { keywords: ['aluguel'], categoryName: 'Aluguel', label: 'Aluguel' },
+  { keywords: ['internet', 'net', 'wi-fi', 'wifi'], categoryName: 'Internet', label: 'Internet' },
+  { keywords: ['academia'], categoryName: 'Academia', label: 'Academia' },
+  { keywords: ['salário', 'salario', 'receita', 'entrada'], categoryName: 'Salário', label: 'Salário' },
 ]
 
-function inferCategoryFromDescription(description: string, categories: Category[]): string | undefined {
+function inferCategoryAndLabel(description: string, categories: Category[]): { categoryId: string; label: string } | undefined {
   const lower = description.toLowerCase().trim()
-  for (const { keywords, categoryName } of VOICE_KEYWORDS) {
+  for (const { keywords, categoryName, label } of VOICE_KEYWORDS) {
     if (keywords.some((k) => lower.includes(k))) {
       const cat = categories.find(
         (c) => c.name.toLowerCase().includes(categoryName.toLowerCase()) || categoryName.toLowerCase().includes(c.name.toLowerCase())
       )
-      if (cat) return cat.id
+      if (cat) return { categoryId: cat.id, label }
     }
   }
   return undefined
@@ -532,9 +532,10 @@ function App() {
   async function submitQuickExpense(parsed: { amount: number; description: string }) {
     if (!token) return
     if (categories.length === 0) await loadCategories()
-    const inferredId = inferCategoryFromDescription(parsed.description, categories)
+    const inferred = inferCategoryAndLabel(parsed.description, categories)
     const variableCategory = categories.find((c) => c.kind === 'EXPENSE_VARIABLE')
-    const categoryId = inferredId || variableCategory?.id
+    const categoryId = inferred?.categoryId || variableCategory?.id
+    const descriptionToSave = inferred ? inferred.label : parsed.description
     setLoading(true)
     setMessage(null)
     try {
@@ -547,7 +548,7 @@ function App() {
         body: JSON.stringify({
           amount: parsed.amount,
           type: 'EXPENSE' as TransactionType,
-          description: parsed.description,
+          description: descriptionToSave,
           categoryId: categoryId || undefined,
           date: new Date().toISOString().slice(0, 10),
         }),
