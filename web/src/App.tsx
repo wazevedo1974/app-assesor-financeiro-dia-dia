@@ -163,8 +163,9 @@ function Resumo() {
 
       <div className="expense-sums">
         <p><strong>Somas do mês:</strong></p>
-        <p>Despesas realizadas (transações): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
-        <p>Total contas a pagar: <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
+        <p>Despesas realizadas (já pagas/registradas): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
+        <p>Total contas a pagar (ainda em aberto): <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
+        <p className="expense-sums-hint">Ao clicar em &quot;Marcar paga&quot; numa conta, o valor é registrado como despesa e a conta sai da lista. Não adicione o mesmo valor em Gastos.</p>
       </div>
 
       {(overviewFilter === 'tudo' || overviewFilter === 'contas') && openBills.length > 0 && (

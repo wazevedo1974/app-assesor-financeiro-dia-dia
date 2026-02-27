@@ -308,6 +308,11 @@ body {
 .expense-sums .expense {
   font-weight: 600;
 }
+.expense-sums-hint {
+  margin-top: 0.75rem !important;
+  font-size: 0.8rem !important;
+  color: #94a3b8 !important;
+}
 
 /* Login */
 .auth-screen {

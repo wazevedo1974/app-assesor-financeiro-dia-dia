@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
+import { TransactionType } from "@prisma/client";
 
 export const billsRouter = Router();
 
@@ -87,11 +88,28 @@ billsRouter.patch("/:id/pay", async (req: AuthRequest, res) => {
       return res.status(404).json({ message: "Conta não encontrada." });
     }
 
+    if (bill.paid) {
+      return res.json(bill);
+    }
+
+    const now = new Date();
+
+    await prisma.transaction.create({
+      data: {
+        userId,
+        amount: bill.amount,
+        type: TransactionType.EXPENSE,
+        description: bill.description,
+        categoryId: bill.categoryId,
+        date: now,
+      },
+    });
+
     const updated = await prisma.bill.update({
       where: { id: bill.id },
       data: {
         paid: true,
-        paidAt: new Date(),
+        paidAt: now,
       },
     });
 
