@@ -358,9 +358,30 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
   padding: 0.55rem 0.3rem;
   border-bottom: 1px solid rgba(30, 64, 175, 0.4);
+}
+
+.tx-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tx-actions .amount {
+  margin-right: 0.25rem;
+}
+
+button.small {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+button.danger:hover {
+  background: rgba(239, 68, 68, 0.9);
 }
 
 .transactions-list li > div {
@@ -509,6 +530,102 @@ button:disabled {
 .category-badge.kind-income {
   background: rgba(34, 197, 94, 0.25);
   color: #86efac;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal {
+  background: radial-gradient(circle at top left, #1f2937, #020617);
+  border-radius: 1.25rem;
+  padding: 1.5rem;
+  max-width: 400px;
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+.modal h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.modal-actions button {
+  flex: 1;
+}
+
+.charts-section {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.charts-section h3,
+.charts-section h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+}
+
+.chart-summary-bars {
+  padding: 0.75rem 0;
+}
+
+.bar-chart-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 70px;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.bar-track {
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.fill-income {
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+}
+
+.fill-expense {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.chart-pie-wrap {
+  margin-top: 0.5rem;
+}
+
+.chart-pie-wrap h4 {
+  margin-bottom: 0.75rem;
 }
 
 @media (max-width: 400px) {

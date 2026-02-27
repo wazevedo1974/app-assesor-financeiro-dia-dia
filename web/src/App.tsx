@@ -1,5 +1,6 @@
 import './App.css'
 import React, { useEffect, useRef, useState } from 'react'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 
 interface SpeechRecognitionInstance {
   start: () => void
@@ -94,7 +95,31 @@ type AdviceResponse = {
 }
 
 type View = 'login' | 'register' | 'dashboard'
-type Tab = 'overview' | 'transactions' | 'bills' | 'categories' | 'insights'
+type Tab = 'overview' | 'transactions' | 'bills' | 'categories' | 'charts' | 'insights'
+
+const VOICE_KEYWORDS: { keywords: string[]; categoryName: string }[] = [
+  { keywords: ['abasteci', 'posto', 'gasolina', 'combustível', 'combustivel'], categoryName: 'Transporte' },
+  { keywords: ['mercado', 'super', 'compras', 'supermercado'], categoryName: 'Mercado' },
+  { keywords: ['lanche', 'restaurante', 'comida', 'uber', 'ifood', 'delivery'], categoryName: 'Lazer' },
+  { keywords: ['farmácia', 'farmacia', 'remédio', 'remedio'], categoryName: 'Lazer' },
+  { keywords: ['aluguel', 'aluguel'], categoryName: 'Aluguel' },
+  { keywords: ['internet', 'net', 'wi-fi', 'wifi'], categoryName: 'Internet' },
+  { keywords: ['academia', 'academia'], categoryName: 'Academia' },
+  { keywords: ['salário', 'salario', 'receita', 'entrada'], categoryName: 'Salário' },
+]
+
+function inferCategoryFromDescription(description: string, categories: Category[]): string | undefined {
+  const lower = description.toLowerCase().trim()
+  for (const { keywords, categoryName } of VOICE_KEYWORDS) {
+    if (keywords.some((k) => lower.includes(k))) {
+      const cat = categories.find(
+        (c) => c.name.toLowerCase().includes(categoryName.toLowerCase()) || categoryName.toLowerCase().includes(c.name.toLowerCase())
+      )
+      if (cat) return cat.id
+    }
+  }
+  return undefined
+}
 
 function kindLabel(kind: CategoryKind): string {
   if (kind === 'EXPENSE_FIXED') return 'Fixo'
@@ -157,6 +182,14 @@ function App() {
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newCategoryKind, setNewCategoryKind] = useState<CategoryKind>('EXPENSE_VARIABLE')
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+  const [editAmount, setEditAmount] = useState('')
+  const [editType, setEditType] = useState<TransactionType>('EXPENSE')
+  const [editDescription, setEditDescription] = useState('')
+  const [editCategoryId, setEditCategoryId] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [chartData, setChartData] = useState<{ categories: Array<{ id: string; name: string; kind: string; income: number; expense: number }>; byKind: { fixed: number; variable: number; income: number } } | null>(null)
+  const [loadingCharts, setLoadingCharts] = useState(false)
 
   useEffect(() => {
     if (token) {
@@ -367,6 +400,27 @@ function App() {
     }
   }
 
+  async function loadChartData() {
+    if (!token) return
+    setLoadingCharts(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/transactions/summary/by-category`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as {
+          categories: Array<{ id: string; name: string; kind: string; income: number; expense: number }>
+          byKind: { fixed: number; variable: number; income: number }
+        }
+        setChartData(data)
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoadingCharts(false)
+    }
+  }
+
   function handleChangeTab(tab: Tab) {
     setActiveTab(tab)
     if (!token) return
@@ -378,9 +432,88 @@ function App() {
       loadBillsList()
     } else if (tab === 'categories') {
       loadCategories()
+    } else if (tab === 'charts') {
+      loadDashboard()
+      loadChartData()
     } else if (tab === 'insights') {
       loadAdviceData()
     }
+  }
+
+  async function handleUpdateTransaction(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token || !editingTransaction) return
+    const amount = Number(editAmount.replace(',', '.'))
+    if (Number.isNaN(amount) || amount <= 0) {
+      setMessage('Informe um valor válido.')
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/transactions/${editingTransaction.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          amount,
+          type: editType,
+          description: editDescription || undefined,
+          categoryId: editCategoryId || undefined,
+          date: editDate,
+        }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao atualizar.')
+        return
+      }
+      setEditingTransaction(null)
+      await loadTransactionsList()
+      await loadDashboard()
+      setMessage('Transação atualizada.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro ao atualizar transação.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDeleteTransaction(id: string) {
+    if (!token) return
+    if (!window.confirm('Excluir esta transação?')) return
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/transactions/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.status !== 204) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao excluir.')
+        return
+      }
+      if (editingTransaction?.id === id) setEditingTransaction(null)
+      await loadTransactionsList()
+      await loadDashboard()
+      setMessage('Transação excluída.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro ao excluir transação.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function openEditTransaction(t: Transaction) {
+    setEditingTransaction(t)
+    setEditAmount(t.amount.toString())
+    setEditType(t.type)
+    setEditDescription(t.description || '')
+    setEditCategoryId(t.categoryId || '')
+    setEditDate(t.date.slice(0, 10))
   }
 
   function parseQuickCommand(text: string): { amount: number; description: string } | null {
@@ -398,7 +531,10 @@ function App() {
 
   async function submitQuickExpense(parsed: { amount: number; description: string }) {
     if (!token) return
+    if (categories.length === 0) await loadCategories()
+    const inferredId = inferCategoryFromDescription(parsed.description, categories)
     const variableCategory = categories.find((c) => c.kind === 'EXPENSE_VARIABLE')
+    const categoryId = inferredId || variableCategory?.id
     setLoading(true)
     setMessage(null)
     try {
@@ -412,7 +548,7 @@ function App() {
           amount: parsed.amount,
           type: 'EXPENSE' as TransactionType,
           description: parsed.description,
-          categoryId: variableCategory?.id || undefined,
+          categoryId: categoryId || undefined,
           date: new Date().toISOString().slice(0, 10),
         }),
       })
@@ -424,7 +560,8 @@ function App() {
       setQuickCommand('')
       await loadDashboard()
       await loadTransactionsList()
-      setMessage(`Despesa de R$ ${parsed.amount.toFixed(2)} registrada.`)
+      setActiveTab('transactions')
+      setMessage(`Despesa de R$ ${parsed.amount.toFixed(2)} registrada. Veja em Transações.`)
     } catch (error) {
       console.error(error)
       setMessage('Erro ao registrar despesa.')
@@ -814,6 +951,13 @@ function App() {
               </button>
               <button
                 type="button"
+                className={`tab-button ${activeTab === 'charts' ? 'active' : ''}`}
+                onClick={() => handleChangeTab('charts')}
+              >
+                Gráficos
+              </button>
+              <button
+                type="button"
                 className={`tab-button ${activeTab === 'insights' ? 'active' : ''}`}
                 onClick={() => handleChangeTab('insights')}
               >
@@ -1002,19 +1146,37 @@ function App() {
                               {new Date(t.date).toLocaleDateString('pt-BR')}
                             </span>
                           </div>
-                          <span
-                            className={
-                              t.type === 'INCOME'
-                                ? 'amount income'
-                                : 'amount expense'
-                            }
-                          >
-                            {t.type === 'INCOME' ? '+' : '-'}
-                            {t.amount.toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
-                          </span>
+                          <div className="tx-actions">
+                            <span
+                              className={
+                                t.type === 'INCOME'
+                                  ? 'amount income'
+                                  : 'amount expense'
+                              }
+                            >
+                              {t.type === 'INCOME' ? '+' : '-'}
+                              {t.amount.toLocaleString('pt-BR', {
+                                style: 'currency',
+                                currency: 'BRL',
+                              })}
+                            </span>
+                            <button
+                              type="button"
+                              className="secondary small"
+                              onClick={() => openEditTransaction(t)}
+                              title="Editar"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary small danger"
+                              onClick={() => handleDeleteTransaction(t.id)}
+                              title="Excluir"
+                            >
+                              Excluir
+                            </button>
+                          </div>
                         </li>
                       )
                     })}
@@ -1172,6 +1334,61 @@ function App() {
               </section>
             )}
 
+            {activeTab === 'charts' && (
+              <section className="charts-section">
+                <h3>Gráficos</h3>
+                {loadingCharts && <p className="hint">Carregando...</p>}
+                {!loadingCharts && chartData && (
+                  <>
+                    {summary && (
+                      <div className="chart-summary-bars">
+                        <h4>Receitas x Despesas</h4>
+                        <div className="bar-chart-simple">
+                          <div className="bar-row">
+                            <span>Receitas</span>
+                            <div className="bar-track"><div className="bar fill-income" style={{ width: `${summary.totalIncome > 0 ? Math.min(100, (summary.totalIncome / (summary.totalIncome + summary.totalExpense || 1)) * 100) : 0}%` }} /></div>
+                            <span>{summary.totalIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                          </div>
+                          <div className="bar-row">
+                            <span>Despesas</span>
+                            <div className="bar-track"><div className="bar fill-expense" style={{ width: `${summary.totalExpense > 0 ? Math.min(100, (summary.totalExpense / (summary.totalIncome + summary.totalExpense || 1)) * 100) : 0}%` }} /></div>
+                            <span>{summary.totalExpense.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {chartData.categories.filter((c) => c.expense > 0).length === 0 ? (
+                      <p className="hint">Registre despesas com categorias para ver o gráfico.</p>
+                    ) : (
+                      <div className="chart-pie-wrap">
+                        <h4>Despesas por categoria</h4>
+                        <ResponsiveContainer width="100%" height={220}>
+                          <PieChart>
+                            <Pie
+                              data={chartData.categories.filter((c) => c.expense > 0).map((c) => ({ name: c.name, value: c.expense }))}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={50}
+                              outerRadius={80}
+                              paddingAngle={2}
+                              dataKey="value"
+                              label={({ name, value }) => `${name}: R$ ${value.toFixed(0)}`}
+                            >
+                              {chartData.categories.filter((c) => c.expense > 0).map((c, i) => (
+                                <Cell key={c.id} fill={`hsl(${260 + i * 40}, 70%, 55%)`} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
+
             {activeTab === 'insights' && (
               <section className="insights">
                 <h3>Insights financeiros</h3>
@@ -1200,6 +1417,48 @@ function App() {
           </>
         )}
       </main>
+
+      {editingTransaction && (
+        <div className="modal-overlay" onClick={() => setEditingTransaction(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Editar transação</h3>
+            <form className="form" onSubmit={handleUpdateTransaction}>
+              <label>
+                Tipo
+                <select value={editType} onChange={(e) => setEditType(e.target.value as TransactionType)}>
+                  <option value="EXPENSE">Despesa</option>
+                  <option value="INCOME">Receita</option>
+                </select>
+              </label>
+              <label>
+                Valor
+                <input type="number" step="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} required />
+              </label>
+              <label>
+                Data
+                <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} required />
+              </label>
+              <label>
+                Categoria
+                <select value={editCategoryId} onChange={(e) => setEditCategoryId(e.target.value)}>
+                  <option value="">Nenhuma</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} ({kindLabel(c.kind)})</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Descrição
+                <input type="text" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Descrição" />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={() => setEditingTransaction(null)}>Cancelar</button>
+                <button type="submit" disabled={loading}>{loading ? 'Salvando...' : 'Salvar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
