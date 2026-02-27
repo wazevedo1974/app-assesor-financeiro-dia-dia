@@ -97,6 +97,8 @@ type AdviceResponse = {
 
 type View = 'login' | 'register' | 'dashboard'
 type Tab = 'overview' | 'transactions' | 'categories' | 'charts' | 'insights'
+type TxViewMode = 'gastos' | 'contas' | 'receitas'
+type OverviewFilter = 'tudo' | 'gastos' | 'contas' | 'receitas'
 
 const VOICE_KEYWORDS: { keywords: string[]; categoryName: string; label: string }[] = [
   { keywords: ['abasteci', 'posto', 'gasolina', 'combustível', 'combustivel', 'de gasolina', 'com gasolina', 'em gasolina', 'gastei de gasolina', 'gastei com gasolina'], categoryName: 'Transporte', label: 'Gasolina' },
@@ -159,6 +161,8 @@ function App() {
   } | null>(null)
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [txViewMode, setTxViewMode] = useState<TxViewMode>('gastos')
+  const [overviewFilter, setOverviewFilter] = useState<OverviewFilter>('tudo')
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date()
     const year = d.getFullYear()
@@ -927,6 +931,41 @@ function App() {
 
   const isLoginView = view === 'login'
 
+  const computedSummary = React.useMemo(() => {
+    if (!summary) return null
+
+    const incomeTotal = summary.totalIncome
+    const expenseTotal = summary.totalExpense
+    const fixed = overviewAdvice?.fixedExpenses ?? 0
+    const variable = overviewAdvice?.variableExpenses ?? 0
+
+    if (overviewFilter === 'gastos') {
+      const expense = variable || expenseTotal
+      const balance = incomeTotal - expense
+      return { income: incomeTotal, expense, balance, fixed, variable }
+    }
+
+    if (overviewFilter === 'contas') {
+      const expense = fixed || expenseTotal
+      const balance = incomeTotal - expense
+      return { income: incomeTotal, expense, balance, fixed, variable }
+    }
+
+    if (overviewFilter === 'receitas') {
+      const income = incomeTotal
+      return { income, expense: 0, balance: income, fixed, variable }
+    }
+
+    // 'tudo'
+    return {
+      income: incomeTotal,
+      expense: expenseTotal,
+      balance: summary.balance,
+      fixed,
+      variable,
+    }
+  }, [summary, overviewAdvice, overviewFilter])
+
   return (
     <div className="app">
       <header className="app-header">
@@ -1022,25 +1061,6 @@ function App() {
                 <p className="hint">Aqui está um resumo rápido das suas finanças.</p>
               </div>
               <div className="dashboard-header-controls">
-                <div className="month-selector">
-                  <input
-                    type="month"
-                    value={selectedMonth}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      if (!value) return
-                      setSelectedMonth(value)
-                      loadDashboard()
-                      if (activeTab === 'transactions') {
-                        loadTransactionsList()
-                      } else if (activeTab === 'charts') {
-                        loadChartData()
-                      } else if (activeTab === 'insights') {
-                        loadAdviceData()
-                      }
-                    }}
-                  />
-                </div>
                 <button type="button" className="secondary" onClick={handleExportPdf}>
                   Exportar PDF
                 </button>
@@ -1122,22 +1142,73 @@ function App() {
                 )}
 
                 {summary && (
+                  <div className="overview-controls">
+                    <div className="month-selector">
+                      <input
+                        type="month"
+                        value={selectedMonth}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          if (!value) return
+                          setSelectedMonth(value)
+                          loadDashboard()
+                          // mantém outras abas sincronizadas com o mês
+                          loadTransactionsList()
+                          loadChartData()
+                          loadAdviceData()
+                        }}
+                      />
+                    </div>
+                    <div className="overview-filter">
+                      <button
+                        type="button"
+                        className={`chip ${overviewFilter === 'tudo' ? 'active' : ''}`}
+                        onClick={() => setOverviewFilter('tudo')}
+                      >
+                        Tudo
+                      </button>
+                      <button
+                        type="button"
+                        className={`chip ${overviewFilter === 'gastos' ? 'active' : ''}`}
+                        onClick={() => setOverviewFilter('gastos')}
+                      >
+                        Gastos
+                      </button>
+                      <button
+                        type="button"
+                        className={`chip ${overviewFilter === 'contas' ? 'active' : ''}`}
+                        onClick={() => setOverviewFilter('contas')}
+                      >
+                        Contas
+                      </button>
+                      <button
+                        type="button"
+                        className={`chip ${overviewFilter === 'receitas' ? 'active' : ''}`}
+                        onClick={() => setOverviewFilter('receitas')}
+                      >
+                        Receitas
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {summary && computedSummary && (
                   <section className="summary">
                     <div>
                       <span>Receitas</span>
                       <strong>
-                        {summary.totalIncome.toLocaleString('pt-BR', {
+                        {computedSummary.income.toLocaleString('pt-BR', {
                           style: 'currency',
                           currency: 'BRL',
                         })}
                       </strong>
                     </div>
-                    {overviewAdvice ? (
+                    {overviewAdvice && overviewFilter !== 'receitas' ? (
                       <>
                         <div>
                           <span>Despesas fixas</span>
                           <strong>
-                            {overviewAdvice.fixedExpenses.toLocaleString('pt-BR', {
+                            {computedSummary.fixed.toLocaleString('pt-BR', {
                               style: 'currency',
                               currency: 'BRL',
                             })}
@@ -1146,7 +1217,7 @@ function App() {
                         <div>
                           <span>Despesas variáveis</span>
                           <strong>
-                            {overviewAdvice.variableExpenses.toLocaleString('pt-BR', {
+                            {computedSummary.variable.toLocaleString('pt-BR', {
                               style: 'currency',
                               currency: 'BRL',
                             })}
@@ -1167,7 +1238,7 @@ function App() {
                     <div>
                       <span>Saldo</span>
                       <strong>
-                        {summary.balance.toLocaleString('pt-BR', {
+                        {computedSummary.balance.toLocaleString('pt-BR', {
                           style: 'currency',
                           currency: 'BRL',
                         })}
@@ -1261,71 +1332,110 @@ function App() {
             {activeTab === 'transactions' && (
               <section className="transactions">
                 <h3>Transações</h3>
-                <form className="form" onSubmit={handleCreateTransaction}>
-                  <div className="form-row">
+                <div className="tx-view-toggle">
+                  <button
+                    type="button"
+                    className={`chip ${txViewMode === 'gastos' ? 'active' : ''}`}
+                    onClick={() => setTxViewMode('gastos')}
+                  >
+                    Gastos (dia a dia)
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip ${txViewMode === 'contas' ? 'active' : ''}`}
+                    onClick={() => setTxViewMode('contas')}
+                  >
+                    Contas do mês
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip ${txViewMode === 'receitas' ? 'active' : ''}`}
+                    onClick={() => setTxViewMode('receitas')}
+                  >
+                    Receitas
+                  </button>
+                </div>
+                {txViewMode !== 'contas' && (
+                  <form className="form" onSubmit={handleCreateTransaction}>
+                    <div className="form-row">
+                      <label>
+                        Tipo
+                        <select
+                          value={
+                            txViewMode === 'gastos'
+                              ? 'EXPENSE'
+                              : txViewMode === 'receitas'
+                                ? 'INCOME'
+                                : newTxType
+                          }
+                          onChange={(e) =>
+                            setNewTxType(e.target.value as TransactionType)
+                          }
+                        >
+                          <option value="EXPENSE">Despesa</option>
+                          <option value="INCOME">Receita</option>
+                        </select>
+                      </label>
+                      <label>
+                        Data
+                        <input
+                          type="date"
+                          value={newTxDate}
+                          onChange={(e) => setNewTxDate(e.target.value)}
+                        />
+                      </label>
+                    </div>
+
                     <label>
-                      Tipo
-                      <select
-                        value={newTxType}
-                        onChange={(e) =>
-                          setNewTxType(e.target.value as TransactionType)
-                        }
-                      >
-                        <option value="EXPENSE">Despesa</option>
-                        <option value="INCOME">Receita</option>
-                      </select>
-                    </label>
-                    <label>
-                      Data
+                      Valor
                       <input
-                        type="date"
-                        value={newTxDate}
-                        onChange={(e) => setNewTxDate(e.target.value)}
+                        type="number"
+                        step="0.01"
+                        value={newTxAmount}
+                        onChange={(e) => setNewTxAmount(e.target.value)}
+                        placeholder="0,00"
+                        required
                       />
                     </label>
-                  </div>
 
-                  <label>
-                    Valor
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={newTxAmount}
-                      onChange={(e) => setNewTxAmount(e.target.value)}
-                      placeholder="0,00"
-                      required
-                    />
-                  </label>
+                    <label>
+                      Categoria
+                      <select
+                        value={newTxCategoryId}
+                        onChange={(e) => setNewTxCategoryId(e.target.value)}
+                      >
+                        <option value="">Selecione (opcional)</option>
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({kindLabel(c.kind)})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                  <label>
-                    Categoria
-                    <select
-                      value={newTxCategoryId}
-                      onChange={(e) => setNewTxCategoryId(e.target.value)}
-                    >
-                      <option value="">Selecione (opcional)</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({kindLabel(c.kind)})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    <label>
+                      Descrição
+                      <input
+                        type="text"
+                        value={newTxDescription}
+                        onChange={(e) => setNewTxDescription(e.target.value)}
+                        placeholder="Ex.: Uber, Mercado..."
+                      />
+                    </label>
 
-                  <label>
-                    Descrição
-                    <input
-                      type="text"
-                      value={newTxDescription}
-                      onChange={(e) => setNewTxDescription(e.target.value)}
-                      placeholder="Ex.: Uber, Mercado..."
-                    />
-                  </label>
+                    <button type="submit" disabled={loading}>
+                      {loading ? 'Salvando...' : 'Adicionar transação'}
+                    </button>
+                  </form>
+                )}
 
-                  <button type="submit" disabled={loading}>
-                    {loading ? 'Salvando...' : 'Adicionar transação'}
-                  </button>
-                </form>
+                {txViewMode === 'contas' && (
+                  <p className="hint">
+                    As contas do mês são calculadas a partir das categorias fixas e das
+                    contas cadastradas. Em breve vamos trazer um formulário dedicado
+                    aqui, separado dos gastos do dia a dia.
+                  </p>
+                )}
 
                 {loadingTransactions ? (
                   <p className="hint">Carregando suas transações...</p>
@@ -1333,54 +1443,69 @@ function App() {
                   <p className="hint">Você ainda não registrou nenhuma transação.</p>
                 ) : (
                   <ul className="transactions-list">
-                    {transactions.map((t) => {
-                      const cat = categories.find((c) => c.id === t.categoryId)
-                      const categoryLabel = cat
-                        ? `${cat.name} (${kindLabel(cat.kind)})`
-                        : 'Sem categoria'
-                      return (
-                        <li key={t.id}>
-                          <div>
-                            <strong>{t.description || cat?.name || 'Sem categoria'}</strong>
-                            <span>
-                              {categoryLabel} •{' '}
-                              {new Date(t.date).toLocaleDateString('pt-BR')}
-                            </span>
-                          </div>
-                          <div className="tx-actions">
-                            <span
-                              className={
-                                t.type === 'INCOME'
-                                  ? 'amount income'
-                                  : 'amount expense'
-                              }
-                            >
-                              {t.type === 'INCOME' ? '+' : '-'}
-                              {t.amount.toLocaleString('pt-BR', {
-                                style: 'currency',
-                                currency: 'BRL',
-                              })}
-                            </span>
-                            <button
-                              type="button"
-                              className="secondary small"
-                              onClick={() => openEditTransaction(t)}
-                              title="Editar"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary small danger"
-                              onClick={() => handleDeleteTransaction(t.id)}
-                              title="Excluir"
-                            >
-                              Excluir
-                            </button>
-                          </div>
-                        </li>
-                      )
-                    })}
+                    {transactions
+                      .filter((t) => {
+                        if (txViewMode === 'gastos') {
+                          return t.type === 'EXPENSE'
+                        }
+                        if (txViewMode === 'receitas') {
+                          return t.type === 'INCOME'
+                        }
+                        // 'contas' mostra apenas despesas classificadas como fixas
+                        const cat = categories.find((c) => c.id === t.categoryId)
+                        return (
+                          t.type === 'EXPENSE' &&
+                          cat?.kind === 'EXPENSE_FIXED'
+                        )
+                      })
+                      .map((t) => {
+                        const cat = categories.find((c) => c.id === t.categoryId)
+                        const categoryLabel = cat
+                          ? `${cat.name} (${kindLabel(cat.kind)})`
+                          : 'Sem categoria'
+                        return (
+                          <li key={t.id}>
+                            <div>
+                              <strong>{t.description || cat?.name || 'Sem categoria'}</strong>
+                              <span>
+                                {categoryLabel} •{' '}
+                                {new Date(t.date).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                            <div className="tx-actions">
+                              <span
+                                className={
+                                  t.type === 'INCOME'
+                                    ? 'amount income'
+                                    : 'amount expense'
+                                }
+                              >
+                                {t.type === 'INCOME' ? '+' : '-'}
+                                {t.amount.toLocaleString('pt-BR', {
+                                  style: 'currency',
+                                  currency: 'BRL',
+                                })}
+                              </span>
+                              <button
+                                type="button"
+                                className="secondary small"
+                                onClick={() => openEditTransaction(t)}
+                                title="Editar"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary small danger"
+                                onClick={() => handleDeleteTransaction(t.id)}
+                                title="Excluir"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          </li>
+                        )
+                      })}
                   </ul>
                 )}
               </section>
