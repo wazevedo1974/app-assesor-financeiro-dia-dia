@@ -78,23 +78,30 @@ export const api = {
       byKind: { fixed: number; variable: number; income: number };
     }>(`/transactions/summary/by-category${qs ? `?${qs}` : ''}`);
   },
-  async listBills(status?: 'open' | 'paid') {
+  async listBills(status?: 'open' | 'paid', from?: string, to?: string) {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
     const qs = params.toString();
-    return request<{ id: string; description: string; amount: number; dueDate: string; paid: boolean }[]>(
+    return request<{ id: string; description: string; amount: number; dueDate: string; paid: boolean; recurrence?: string }[]>(
       `/bills${qs ? `?${qs}` : ''}`
     );
   },
-  async createBill(input: { description: string; amount: number; dueDate: string; categoryId?: string }) {
+  async createBill(input: { description: string; amount: number; dueDate: string; categoryId?: string; recurrence?: 'NONE' | 'MONTHLY' | 'WEEKLY' }) {
     return request('/bills', { method: 'POST', body: JSON.stringify(input) });
   },
   async payBill(id: string) {
     return request(`/bills/${id}/pay`, { method: 'PATCH' });
   },
-  async listTransactions() {
-    return request<{ id: string; amount: number; type: string; description?: string | null; date: string }[]>(
-      '/transactions'
+  async listTransactions(from?: string, to?: string, type?: 'INCOME' | 'EXPENSE') {
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    if (type) params.append('type', type);
+    const qs = params.toString();
+    return request<{ id: string; amount: number; type: string; description?: string | null; date: string; categoryId?: string | null }[]>(
+      `/transactions${qs ? `?${qs}` : ''}`
     );
   },
   async createTransaction(input: { amount: number; type: 'INCOME' | 'EXPENSE'; description?: string; categoryId?: string; date?: string }) {

@@ -37,7 +37,7 @@ billsRouter.post("/", async (req: AuthRequest, res) => {
 billsRouter.get("/", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;
-    const { status } = req.query;
+    const { status, from, to } = req.query;
 
     const where: any = { userId };
 
@@ -45,6 +45,12 @@ billsRouter.get("/", async (req: AuthRequest, res) => {
       where.paid = false;
     } else if (status === "paid") {
       where.paid = true;
+    }
+
+    if (from || to) {
+      where.dueDate = {};
+      if (from) where.dueDate.gte = new Date(String(from));
+      if (to) where.dueDate.lte = new Date(String(to));
     }
 
     const bills = await prisma.bill.findMany({
