@@ -25,6 +25,14 @@ function getCurrentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
+/** Formata data ISO (YYYY-MM-DD) para padrão brasileiro DD/MM/AAAA */
+function formatDateBR(iso: string) {
+  const s = iso.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const [y, m, d] = s.split('-')
+  return `${d}/${m}/${y}`
+}
+
 // --- Login ---
 function Login({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('')
@@ -142,7 +150,7 @@ function Resumo() {
           <span className="value income">R$ {summary ? summary.totalIncome.toFixed(2) : '0,00'}</span>
         </div>
         <div className="card">
-          <span className="label">Despesas</span>
+          <span className="label">Despesas realizadas</span>
           <span className="value expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span>
         </div>
         <div className="card">
@@ -153,6 +161,12 @@ function Resumo() {
         </div>
       </div>
 
+      <div className="expense-sums">
+        <p><strong>Somas do mês:</strong></p>
+        <p>Despesas realizadas (transações): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
+        <p>Total contas a pagar: <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
+      </div>
+
       {(overviewFilter === 'tudo' || overviewFilter === 'contas') && openBills.length > 0 && (
         <section className="section">
           <h3>Contas a pagar</h3>
@@ -161,7 +175,7 @@ function Resumo() {
             <ul className="bill-list">
               {filteredBills.map((b) => (
                 <li key={b.id}>
-                  <span>{b.description} — vence {b.dueDate.slice(0, 10).split('-').reverse().join('/')}</span>
+                  <span>{b.description} — vence {formatDateBR(b.dueDate)}</span>
                   <span className="expense">R$ {b.amount.toFixed(2)}</span>
                 </li>
               ))}
@@ -176,7 +190,7 @@ function Resumo() {
           <ul className="tx-list">
             {filteredTx.map((t) => (
               <li key={t.id}>
-                <span>{t.date.slice(0, 10)} {t.description || '-'}</span>
+                <span>{formatDateBR(t.date)} {t.description || '-'}</span>
                 <span className={t.type === 'INCOME' ? 'income' : 'expense'}>
                   {t.type === 'INCOME' ? '+' : '-'} R$ {t.amount.toFixed(2)}
                 </span>
@@ -416,7 +430,7 @@ function Transacoes() {
           <ul className="tx-list">
             {gastosList.map((t) => (
               <li key={t.id}>
-                <span>{t.date.slice(0, 10)} {t.description || '-'}</span>
+                <span>{formatDateBR(t.date)} {t.description || '-'}</span>
                 <span className="expense">- R$ {t.amount.toFixed(2)}</span>
               </li>
             ))}
@@ -446,7 +460,7 @@ function Transacoes() {
           <ul className="bill-list">
             {bills.map((b) => (
               <li key={b.id}>
-                <span>{b.description} — {b.dueDate.slice(0, 10).split('-').reverse().join('/')}</span>
+                <span>{b.description} — {formatDateBR(b.dueDate)}</span>
                 <span>
                   <span className="expense">R$ {b.amount.toFixed(2)}</span>
                   <button type="button" className="btn-pay" onClick={() => handlePayBill(b.id)}>Marcar paga</button>
@@ -475,7 +489,7 @@ function Transacoes() {
           <ul className="tx-list">
             {receitasList.map((t) => (
               <li key={t.id}>
-                <span>{t.date.slice(0, 10)} {t.description || '-'}</span>
+                <span>{formatDateBR(t.date)} {t.description || '-'}</span>
                 <span className="income">+ R$ {t.amount.toFixed(2)}</span>
               </li>
             ))}

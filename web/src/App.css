@@ -289,6 +289,26 @@ body {
 
 .muted { color: #64748b; font-size: 0.9rem; }
 
+.expense-sums {
+  background: #1e293b;
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+.expense-sums p {
+  margin: 0.35rem 0;
+}
+.expense-sums p:first-child {
+  margin-bottom: 0.5rem;
+}
+.expense-sums strong {
+  color: #e2e8f0;
+}
+.expense-sums .expense {
+  font-weight: 600;
+}
+
 /* Login */
 .auth-screen {
   min-height: 100vh;
