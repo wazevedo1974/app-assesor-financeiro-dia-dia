@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { api, setAuthToken } from './api'
 import './App.css'
 
-type MainTab = 'resumo' | 'transacoes'
+type MainTab = 'resumo' | 'transacoes' | 'categorias'
 type OverviewFilter = 'tudo' | 'gastos' | 'contas' | 'receitas'
 type TxViewMode = 'gastos' | 'contas' | 'receitas'
 
@@ -805,7 +805,90 @@ function Transacoes() {
   )
 }
 
-// --- App (só Resumo e Transações) ---
+// --- Categorias ---
+function Categorias() {
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newName, setNewName] = useState('')
+  const [newKind, setNewKind] = useState<'EXPENSE_FIXED' | 'EXPENSE_VARIABLE' | 'INCOME'>('EXPENSE_VARIABLE')
+  const [sending, setSending] = useState(false)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const list = await api.listCategories()
+      setCategories(list)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newName.trim()) return
+    setSending(true)
+    try {
+      await api.createCategory(newName.trim(), newKind)
+      setNewName('')
+      await load()
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const fixas = categories.filter((c) => c.kind === 'EXPENSE_FIXED')
+  const variaveis = categories.filter((c) => c.kind === 'EXPENSE_VARIABLE')
+  const receitas = categories.filter((c) => c.kind === 'INCOME')
+
+  if (loading) return <div className="screen"><p>Carregando...</p></div>
+
+  return (
+    <div className="screen">
+      <h2>Categorias</h2>
+      <p className="muted">Crie categorias para classificar gastos, contas e receitas.</p>
+
+      <form onSubmit={handleAdd} className="form-block form-compact" style={{ marginBottom: '1.5rem' }}>
+        <input placeholder="Nome da categoria" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+        <select value={newKind} onChange={(e) => setNewKind(e.target.value as 'EXPENSE_FIXED' | 'EXPENSE_VARIABLE' | 'INCOME')}>
+          <option value="EXPENSE_FIXED">Gasto fixo (contas)</option>
+          <option value="EXPENSE_VARIABLE">Gasto variável (dia a dia)</option>
+          <option value="INCOME">Receita</option>
+        </select>
+        <button type="submit" disabled={sending}>{sending ? '...' : 'Adicionar'}</button>
+      </form>
+
+      <section className="section">
+        <h3>Gastos fixos (contas do mês)</h3>
+        <ul className="cat-list">
+          {fixas.map((c) => <li key={c.id}>{c.name}</li>)}
+        </ul>
+        {fixas.length === 0 && <p className="muted">Nenhuma. Adicione acima.</p>}
+      </section>
+      <section className="section">
+        <h3>Gastos variáveis (dia a dia)</h3>
+        <ul className="cat-list">
+          {variaveis.map((c) => <li key={c.id}>{c.name}</li>)}
+        </ul>
+        {variaveis.length === 0 && <p className="muted">Nenhuma. Adicione acima.</p>}
+      </section>
+      <section className="section">
+        <h3>Receitas</h3>
+        <ul className="cat-list">
+          {receitas.map((c) => <li key={c.id}>{c.name}</li>)}
+        </ul>
+        {receitas.length === 0 && <p className="muted">Nenhuma. Adicione acima.</p>}
+      </section>
+    </div>
+  )
+}
+
+// --- App ---
 function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
   const [tab, setTab] = useState<MainTab>('resumo')
@@ -832,9 +915,11 @@ function App() {
       <nav className="tabs main-tabs">
         <button type="button" className={tab === 'resumo' ? 'active' : ''} onClick={() => setTab('resumo')}>Resumo</button>
         <button type="button" className={tab === 'transacoes' ? 'active' : ''} onClick={() => setTab('transacoes')}>Transações</button>
+        <button type="button" className={tab === 'categorias' ? 'active' : ''} onClick={() => setTab('categorias')}>Categorias</button>
       </nav>
       {tab === 'resumo' && <Resumo />}
       {tab === 'transacoes' && <Transacoes />}
+      {tab === 'categorias' && <Categorias />}
     </div>
   )
 }

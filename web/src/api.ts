@@ -126,6 +126,12 @@ export const api = {
   async listCategories() {
     return request<{ id: string; name: string; kind: string }[]>('/categories');
   },
+  async createCategory(name: string, kind: 'EXPENSE_FIXED' | 'EXPENSE_VARIABLE' | 'INCOME') {
+    return request<{ id: string; name: string; kind: string }>('/categories', {
+      method: 'POST',
+      body: JSON.stringify({ name: name.trim(), kind }),
+    });
+  },
   async getFinancialAdvice() {
     return request<{
       advices: { id: string; severity: string; title: string; message: string }[];
