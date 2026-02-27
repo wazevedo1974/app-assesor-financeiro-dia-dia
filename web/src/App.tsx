@@ -184,6 +184,15 @@ function App() {
     return d.toISOString().slice(0, 10)
   })
 
+  const [newBillDescription, setNewBillDescription] = useState('')
+  const [newBillAmount, setNewBillAmount] = useState('')
+  const [newBillDueDate, setNewBillDueDate] = useState(() => {
+    const d = new Date()
+    return d.toISOString().slice(0, 10)
+  })
+  const [newBillCategoryId, setNewBillCategoryId] = useState<string>('')
+  const [newBillRecurring, setNewBillRecurring] = useState<boolean>(true)
+
   const [quickCommand, setQuickCommand] = useState('')
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
@@ -462,6 +471,83 @@ function App() {
     }
   }
 
+  async function handleCreateBill(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token) return
+    const amount = Number(newBillAmount.replace(',', '.'))
+    if (!amount || Number.isNaN(amount) || amount <= 0) {
+      setMessage('Informe um valor válido para a conta.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE_URL}/bills`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          description: newBillDescription,
+          amount,
+          dueDate: newBillDueDate,
+          categoryId: newBillCategoryId || undefined,
+          recurrence: newBillRecurring ? 'MONTHLY' : 'NONE',
+        }),
+      })
+
+      const body = (await res.json().catch(() => null)) as
+        | { message?: string }
+        | Bill
+        | null
+
+      if (!res.ok) {
+        setMessage((body as { message?: string })?.message || 'Erro ao criar conta.')
+        return
+      }
+
+      setNewBillDescription('')
+      setNewBillAmount('')
+      setNewBillCategoryId('')
+      setNewBillDueDate(new Date().toISOString().slice(0, 10))
+      await loadBillsList()
+      await loadDashboard()
+      setMessage('Conta criada com sucesso.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao criar conta.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handlePayBill(id: string) {
+    if (!token) return
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE_URL}/bills/${id}/pay`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null
+        setMessage(body?.message || 'Erro ao marcar conta como paga.')
+        return
+      }
+      await loadBillsList()
+      await loadDashboard()
+      setMessage('Conta marcada como paga.')
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro inesperado ao marcar conta como paga.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function loadDashboard(forcedToken?: string) {
     const authToken = forcedToken || token
     if (!authToken) return
@@ -573,7 +659,30 @@ function App() {
     }
   }
 
-  // Mantemos as contas em aberto carregadas via /months/:ym/overview no loadDashboard.
+  async function loadBillsList() {
+    if (!token) return
+    try {
+      const { from, to } = getMonthRange(selectedMonth)
+      const params = new URLSearchParams()
+      params.set('status', 'open')
+      params.set('from', from)
+      params.set('to', to)
+      const res = await fetch(`${API_BASE_URL}/bills?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as Bill[]
+        setBills(
+          data.map((b) => ({
+            ...b,
+            amount: b.amount,
+          })),
+        )
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
 
   async function loadAdviceData() {
     if (!token) return
@@ -625,6 +734,7 @@ function App() {
       loadDashboard()
     } else if (tab === 'transactions') {
       loadTransactionsList()
+      loadBillsList()
     } else if (tab === 'categories') {
       loadCategories()
     } else if (tab === 'charts') {
@@ -881,6 +991,9 @@ function App() {
 
     try {
       setLoading(true)
+      let type: TransactionType = newTxType
+      if (txViewMode === 'gastos') type = 'EXPENSE'
+      if (txViewMode === 'receitas') type = 'INCOME'
       const res = await fetch(`${API_BASE_URL}/transactions`, {
         method: 'POST',
         headers: {
@@ -889,7 +1002,7 @@ function App() {
         },
         body: JSON.stringify({
           amount,
-          type: newTxType,
+          type,
           description: newTxDescription || undefined,
           categoryId: newTxCategoryId || undefined,
           date: newTxDate,
@@ -965,6 +1078,23 @@ function App() {
       variable,
     }
   }, [summary, overviewAdvice, overviewFilter])
+
+  const filteredCategoriesForForm = React.useMemo(() => {
+    if (txViewMode === 'gastos') {
+      return categories.filter((c) => c.kind === 'EXPENSE_VARIABLE')
+    }
+    if (txViewMode === 'receitas') {
+      return categories.filter((c) => c.kind === 'INCOME')
+    }
+    if (txViewMode === 'contas') {
+      return categories.filter(
+        (c) =>
+          c.kind === 'EXPENSE_FIXED' ||
+          c.kind === 'EXPENSE_VARIABLE',
+      )
+    }
+    return categories
+  }, [categories, txViewMode])
 
   return (
     <div className="app">
