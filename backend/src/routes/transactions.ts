@@ -99,6 +99,29 @@ transactionsRouter.delete("/:id", async (req: AuthRequest, res) => {
   }
 });
 
+transactionsRouter.delete("/", async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ message: "Informe from e to (YYYY-MM-DD) para limpar transações do período." });
+    }
+    const deleted = await prisma.transaction.deleteMany({
+      where: {
+        userId,
+        date: {
+          gte: new Date(String(from)),
+          lte: new Date(String(to)),
+        },
+      },
+    });
+    return res.json({ deleted: deleted.count });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao limpar transações." });
+  }
+});
+
 transactionsRouter.get("/summary", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;

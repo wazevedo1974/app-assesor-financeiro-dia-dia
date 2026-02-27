@@ -327,6 +327,20 @@ body {
   font-size: 0.8rem !important;
   color: #94a3b8 !important;
 }
+.btn-reset-month {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn-reset-month:hover {
+  color: #f87171;
+  border-color: #f87171;
+}
 
 /* Login */
 .auth-screen {

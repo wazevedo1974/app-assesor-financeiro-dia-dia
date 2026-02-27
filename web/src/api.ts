@@ -111,6 +111,9 @@ export const api = {
   async deleteTransaction(id: string) {
     return request<void>(`/transactions/${id}`, { method: 'DELETE' });
   },
+  async deleteTransactionsInPeriod(from: string, to: string) {
+    return request<{ deleted: number }>(`/transactions?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { method: 'DELETE' });
+  },
   async listCategories() {
     return request<{ id: string; name: string; kind: string }[]>('/categories');
   },

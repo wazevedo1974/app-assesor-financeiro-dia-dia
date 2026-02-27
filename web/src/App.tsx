@@ -163,9 +163,24 @@ function Resumo() {
 
       <div className="expense-sums">
         <p><strong>Somas do mês:</strong></p>
-        <p>Despesas realizadas (só o que você já pagou e registrou): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
+        <p>Despesas realizadas (só gastos que você lançou em Transações → Gastos): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
         <p>Total contas a pagar (vencimentos que ainda não pagou): <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
-        <p className="expense-sums-hint">Conta que vence no futuro só entra em &quot;Despesas realizadas&quot; quando você clicar &quot;Marcar paga&quot;. Se aparecer valor de conta que ainda não venceu, foi lançado por engano em Gastos — exclua em Transações → Gastos.</p>
+        <p className="expense-sums-hint">&quot;Marcar paga&quot; só tira a conta da lista; não cria despesa. Para aparecer aqui, lance em Transações → Gastos quando pagar.</p>
+        <button
+          type="button"
+          className="btn-reset-month"
+          onClick={async () => {
+            if (!window.confirm(`Apagar todas as transações (gastos e receitas) de ${formatMonthLabel(selectedMonth)}? Não apaga contas a pagar.`)) return
+            try {
+              await api.deleteTransactionsInPeriod(from, to)
+              await load()
+            } catch (e) {
+              console.error(e)
+            }
+          }}
+        >
+          Limpar transações deste mês
+        </button>
       </div>
 
       {(overviewFilter === 'tudo' || overviewFilter === 'contas') && openBills.length > 0 && (
