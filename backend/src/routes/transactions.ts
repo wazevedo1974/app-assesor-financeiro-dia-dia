@@ -76,61 +76,6 @@ transactionsRouter.get("/", async (req: AuthRequest, res) => {
   }
 });
 
-transactionsRouter.patch("/:id", async (req: AuthRequest, res) => {
-  try {
-    const userId = req.userId!;
-    const id = String(req.params.id);
-    const { amount, type, description, categoryId, date } = req.body;
-
-    const existing = await prisma.transaction.findFirst({
-      where: { id, userId },
-    });
-    if (!existing) {
-      return res.status(404).json({ message: "Transação não encontrada." });
-    }
-
-    const data: Record<string, unknown> = {};
-    if (amount != null) data.amount = amount;
-    if (type != null) data.type = type;
-    if (description !== undefined) data.description = description;
-    if (categoryId !== undefined) data.categoryId = categoryId || null;
-    if (date != null) data.date = new Date(date);
-
-    const transaction = await prisma.transaction.update({
-      where: { id },
-      data,
-    });
-
-    return res.json({
-      ...transaction,
-      amount: Number(transaction.amount),
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Erro ao atualizar transação." });
-  }
-});
-
-transactionsRouter.delete("/:id", async (req: AuthRequest, res) => {
-  try {
-    const userId = req.userId!;
-    const id = String(req.params.id);
-
-    const existing = await prisma.transaction.findFirst({
-      where: { id, userId },
-    });
-    if (!existing) {
-      return res.status(404).json({ message: "Transação não encontrada." });
-    }
-
-    await prisma.transaction.delete({ where: { id } });
-    return res.status(204).send();
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Erro ao excluir transação." });
-  }
-});
-
 transactionsRouter.get("/summary", async (req: AuthRequest, res) => {
   try {
     const userId = req.userId!;

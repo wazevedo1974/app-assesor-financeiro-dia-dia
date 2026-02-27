@@ -35,7 +35,6 @@ model User {
   transactions Transaction[]
   bills        Bill[]
   categories   Category[]
-  billTemplates BillTemplate[]
 }
 
 model Category {
@@ -48,7 +47,6 @@ model Category {
 
   transactions Transaction[]
   bills        Bill[]
-  billTemplates BillTemplate[]
 }
 
 model Transaction {
@@ -62,25 +60,6 @@ model Transaction {
   description String?
   date        DateTime        @default(now())
   createdAt   DateTime        @default(now())
-
-  paidBill    Bill?           @relation("BillPaidTransaction")
-}
-
-model BillTemplate {
-  id           String         @id @default(cuid())
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       String
-  category     Category?      @relation(fields: [categoryId], references: [id])
-  categoryId   String?
-  description  String
-  amount       Decimal
-  dueDay       Int
-  recurrence   BillRecurrence @default(MONTHLY)
-  active       Boolean        @default(true)
-  reminderDays Int            @default(1)
-  createdAt    DateTime       @default(now())
-
-  bills        Bill[]
 }
 
 model Bill {
@@ -89,16 +68,12 @@ model Bill {
   userId       String
   category     Category?     @relation(fields: [categoryId], references: [id])
   categoryId   String?
-  billTemplate BillTemplate? @relation(fields: [billTemplateId], references: [id], onDelete: SetNull)
-  billTemplateId String?
   description  String
   amount       Decimal
   dueDate      DateTime
   recurrence   BillRecurrence @default(NONE)
   paid         Boolean       @default(false)
   paidAt       DateTime?
-  paidTransaction   Transaction? @relation("BillPaidTransaction", fields: [paidTransactionId], references: [id], onDelete: SetNull)
-  paidTransactionId String?      @unique
   reminderDays Int           @default(1)
   createdAt    DateTime      @default(now())
 }
