@@ -107,7 +107,7 @@ type AdviceResponse = {
 }
 
 type View = 'login' | 'register' | 'dashboard'
-type Tab = 'overview' | 'transactions' | 'bills' | 'categories' | 'charts' | 'insights'
+type Tab = 'overview' | 'transactions' | 'categories' | 'charts' | 'insights'
 
 const VOICE_KEYWORDS: { keywords: string[]; categoryName: string; label: string }[] = [
   { keywords: ['abasteci', 'posto', 'gasolina', 'combustível', 'combustivel', 'de gasolina', 'com gasolina', 'em gasolina', 'gastei de gasolina', 'gastei com gasolina'], categoryName: 'Transporte', label: 'Gasolina' },
@@ -181,11 +181,6 @@ function App() {
   const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [loadingBills, setLoadingBills] = useState(false)
   const [billTemplates, setBillTemplates] = useState<BillTemplate[]>([])
-  const [loadingBillTemplates, setLoadingBillTemplates] = useState(false)
-  const [newTemplateDescription, setNewTemplateDescription] = useState('')
-  const [newTemplateAmount, setNewTemplateAmount] = useState('')
-  const [newTemplateDueDay, setNewTemplateDueDay] = useState<string>('1')
-  const [newTemplateCategoryId, setNewTemplateCategoryId] = useState<string>('')
   const [advice, setAdvice] = useState<AdviceResponse | null>(null)
   const [loadingAdvice, setLoadingAdvice] = useState(false)
 
@@ -621,7 +616,6 @@ function App() {
 
   async function loadBillTemplates() {
     if (!token) return
-    setLoadingBillTemplates(true)
     try {
       await ensureCategories()
       const res = await fetch(`${API_BASE_URL}/bill-templates`, {
@@ -633,8 +627,6 @@ function App() {
       }
     } catch (error) {
       console.error(error)
-    } finally {
-      setLoadingBillTemplates(false)
     }
   }
 
@@ -688,9 +680,6 @@ function App() {
       loadDashboard()
     } else if (tab === 'transactions') {
       loadTransactionsList()
-    } else if (tab === 'bills') {
-      loadBillTemplates()
-      loadBillsList()
     } else if (tab === 'categories') {
       loadCategories()
     } else if (tab === 'charts') {
@@ -1029,59 +1018,6 @@ function App() {
     }
   }
 
-  async function handleCreateBillTemplate(event: React.FormEvent) {
-    event.preventDefault()
-    if (!token) return
-    const amount = Number(newTemplateAmount.replace(',', '.'))
-    if (!amount || Number.isNaN(amount) || amount <= 0) {
-      setMessage('Informe um valor válido para o modelo.')
-      return
-    }
-    const dueDayNumber = Number(newTemplateDueDay)
-    if (!Number.isInteger(dueDayNumber) || dueDayNumber < 1 || dueDayNumber > 31) {
-      setMessage('Dia de vencimento deve estar entre 1 e 31.')
-      return
-    }
-
-    try {
-      setLoading(true)
-      const res = await fetch(`${API_BASE_URL}/bill-templates`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          description: newTemplateDescription,
-          amount,
-          dueDay: dueDayNumber,
-          categoryId: newTemplateCategoryId || undefined,
-        }),
-      })
-
-      const body = (await res.json().catch(() => null)) as
-        | { message?: string }
-        | BillTemplate
-        | null
-
-      if (!res.ok) {
-        setMessage((body as { message?: string })?.message || 'Erro ao criar modelo.')
-        return
-      }
-
-      setNewTemplateDescription('')
-      setNewTemplateAmount('')
-      setNewTemplateDueDay('1')
-      setNewTemplateCategoryId('')
-      await loadBillTemplates()
-      setMessage('Modelo criado com sucesso.')
-    } catch (error) {
-      console.error(error)
-      setMessage('Erro inesperado ao criar modelo.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   async function handleToggleTemplateActive(id: string, current: boolean) {
     if (!token) return
@@ -1299,8 +1235,6 @@ function App() {
                       loadDashboard()
                       if (activeTab === 'transactions') {
                         loadTransactionsList()
-                      } else if (activeTab === 'bills') {
-                        loadBillsList()
                       } else if (activeTab === 'charts') {
                         loadChartData()
                       } else if (activeTab === 'insights') {
@@ -1357,13 +1291,6 @@ function App() {
                 onClick={() => handleChangeTab('transactions')}
               >
                 Transações
-              </button>
-              <button
-                type="button"
-                className={`tab-button ${activeTab === 'bills' ? 'active' : ''}`}
-                onClick={() => handleChangeTab('bills')}
-              >
-                Contas
               </button>
               <button
                 type="button"
@@ -1656,213 +1583,6 @@ function App() {
                         </li>
                       )
                     })}
-                  </ul>
-                )}
-              </section>
-            )}
-
-            {activeTab === 'bills' && (
-              <section className="bills-section">
-                <h3>Modelos de contas fixas</h3>
-
-                <form className="form" onSubmit={handleCreateBillTemplate}>
-                  <label>
-                    Descrição
-                    <input
-                      type="text"
-                      value={newTemplateDescription}
-                      onChange={(e) => setNewTemplateDescription(e.target.value)}
-                      placeholder="Ex.: Aluguel, Internet..."
-                      required
-                    />
-                  </label>
-
-                  <div className="form-row">
-                    <label>
-                      Valor
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={newTemplateAmount}
-                        onChange={(e) => setNewTemplateAmount(e.target.value)}
-                        placeholder="0,00"
-                        required
-                      />
-                    </label>
-                    <label>
-                      Dia vencimento
-                      <input
-                        type="number"
-                        min={1}
-                        max={31}
-                        value={newTemplateDueDay}
-                        onChange={(e) => setNewTemplateDueDay(e.target.value)}
-                        required
-                      />
-                    </label>
-                  </div>
-
-                  <label>
-                    Categoria
-                    <select
-                      value={newTemplateCategoryId}
-                      onChange={(e) => setNewTemplateCategoryId(e.target.value)}
-                    >
-                      <option value="">Selecione (opcional)</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({kindLabel(c.kind)})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <button type="submit" disabled={loading}>
-                    {loading ? 'Salvando...' : 'Adicionar modelo'}
-                  </button>
-                </form>
-
-                {loadingBillTemplates ? (
-                  <p className="hint">Carregando modelos...</p>
-                ) : billTemplates.length === 0 ? (
-                  <p className="hint">
-                    Nenhum modelo cadastrado. Use o formulário acima para criar suas contas fixas.
-                  </p>
-                ) : (
-                  <ul className="bills-list">
-                    {billTemplates.map((tpl) => (
-                      <li key={tpl.id}>
-                        <div>
-                          <strong>{tpl.description}</strong>
-                          <span>
-                            Vence todo dia {tpl.dueDay}{' '}
-                            {tpl.active ? '(ativo)' : '(inativo)'}
-                          </span>
-                        </div>
-                        <div className="bills-actions">
-                          <span>
-                            {tpl.amount.toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
-                          </span>
-                          <button
-                            type="button"
-                            className="secondary small"
-                            onClick={() => handleToggleTemplateActive(tpl.id, tpl.active)}
-                          >
-                            {tpl.active ? 'Desativar' : 'Ativar'}
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary small danger"
-                            onClick={() => handleDeleteTemplate(tpl.id)}
-                          >
-                            Remover
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <div className="bills-generate">
-                  <button type="button" className="secondary" onClick={handleGenerateBillsForMonth}>
-                    Gerar contas do mês selecionado
-                  </button>
-                </div>
-
-                <h3>Contas do mês</h3>
-
-                <form className="form" onSubmit={handleCreateBill}>
-                  <label>
-                    Descrição
-                    <input
-                      type="text"
-                      value={newBillDescription}
-                      onChange={(e) => setNewBillDescription(e.target.value)}
-                      placeholder="Ex.: Aluguel, Internet..."
-                      required
-                    />
-                  </label>
-
-                  <div className="form-row">
-                    <label>
-                      Valor
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={newBillAmount}
-                        onChange={(e) => setNewBillAmount(e.target.value)}
-                        placeholder="0,00"
-                        required
-                      />
-                    </label>
-                    <label>
-                      Vencimento
-                      <input
-                        type="date"
-                        value={newBillDueDate}
-                        onChange={(e) => setNewBillDueDate(e.target.value)}
-                        required
-                      />
-                    </label>
-                  </div>
-
-                  <label>
-                    Categoria
-                    <select
-                      value={newBillCategoryId}
-                      onChange={(e) => setNewBillCategoryId(e.target.value)}
-                    >
-                      <option value="">Selecione (opcional)</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({kindLabel(c.kind)})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <button type="submit" disabled={loading}>
-                    {loading ? 'Salvando...' : 'Adicionar conta'}
-                  </button>
-                </form>
-
-                {loadingBills ? (
-                  <p className="hint">Carregando contas...</p>
-                ) : bills.length === 0 ? (
-                  <p className="hint">Nenhuma conta em aberto encontrada.</p>
-                ) : (
-                  <ul className="bills-list">
-                    {bills.map((bill) => (
-                      <li key={bill.id}>
-                        <div>
-                          <strong>{bill.description}</strong>
-                          <span>
-                            Vence em{' '}
-                            {new Date(bill.dueDate).toLocaleDateString('pt-BR')}
-                          </span>
-                        </div>
-                        <div className="bills-actions">
-                          <span>
-                            {bill.amount.toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
-                          </span>
-                          {!bill.paid && (
-                            <button
-                              type="button"
-                              className="secondary"
-                              onClick={() => handlePayBill(bill.id)}
-                            >
-                              Marcar paga
-                            </button>
-                          )}
-                        </div>
-                      </li>
-                    ))}
                   </ul>
                 )}
               </section>
