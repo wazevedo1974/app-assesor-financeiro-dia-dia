@@ -274,6 +274,22 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.voice-btn {
+  margin-top: 0;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.voice-btn.listening {
+  background: rgba(239, 68, 68, 0.9);
+  animation: pulse-listening 1s ease-in-out infinite;
+}
+
+@keyframes pulse-listening {
+  50% { opacity: 0.85; filter: brightness(1.1); }
+}
+
 .tabs {
   margin-top: 1.25rem;
   display: flex;

@@ -1,5 +1,25 @@
 import './App.css'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+
+interface SpeechRecognitionInstance {
+  start: () => void
+  stop: () => void
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((e: { results: Array<Array<{ transcript: string }>> }) => void) | null
+  onend: (() => void) | null
+  onerror: ((e: { error: string }) => void) | null
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
+  if (typeof window === 'undefined') return null
+  const Win = window as Window & {
+    SpeechRecognition?: new () => SpeechRecognitionInstance
+    webkitSpeechRecognition?: new () => SpeechRecognitionInstance
+  }
+  return Win.SpeechRecognition ?? Win.webkitSpeechRecognition ?? null
+}
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
@@ -128,6 +148,8 @@ function App() {
   const [newBillCategoryId, setNewBillCategoryId] = useState<string>('')
 
   const [quickCommand, setQuickCommand] = useState('')
+  const [isListening, setIsListening] = useState(false)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const [overviewAdvice, setOverviewAdvice] = useState<{
     fixedExpenses: number
     variableExpenses: number
@@ -140,6 +162,14 @@ function App() {
     if (token) {
       setView('dashboard')
       loadDashboard()
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
     }
   }, [])
 
@@ -366,18 +396,12 @@ function App() {
     return { amount, description }
   }
 
-  async function handleQuickCommand(event: React.FormEvent) {
-    event.preventDefault()
+  async function submitQuickExpense(parsed: { amount: number; description: string }) {
     if (!token) return
-    const parsed = parseQuickCommand(quickCommand)
-    if (!parsed) {
-      setMessage('Digite algo como: "Abasteci R$ 50" ou "50 reais mercado"')
-      return
-    }
     const variableCategory = categories.find((c) => c.kind === 'EXPENSE_VARIABLE')
+    setLoading(true)
+    setMessage(null)
     try {
-      setLoading(true)
-      setMessage(null)
       const res = await fetch(`${API_BASE_URL}/transactions`, {
         method: 'POST',
         headers: {
@@ -407,6 +431,75 @@ function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleQuickCommand(event: React.FormEvent) {
+    event.preventDefault()
+    if (!token) return
+    const parsed = parseQuickCommand(quickCommand)
+    if (!parsed) {
+      setMessage('Digite algo como: "Abasteci R$ 50" ou "50 reais mercado"')
+      return
+    }
+    await submitQuickExpense(parsed)
+  }
+
+  function startVoiceInput() {
+    const SpeechRecognition = getSpeechRecognition()
+    if (!SpeechRecognition) {
+      setMessage('Seu navegador não suporta reconhecimento de voz. Use Chrome ou Edge.')
+      return
+    }
+    if (!token) return
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    const recognition = new SpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.lang = 'pt-BR'
+    recognitionRef.current = recognition
+    setIsListening(true)
+    setMessage('Fale agora: ex. "Abasteci 50 reais" ou "30 reais mercado"...')
+
+    recognition.onresult = (event: { results: Array<Array<{ transcript: string }>> }) => {
+      const transcript = event.results[event.results.length - 1][0].transcript.trim()
+      setQuickCommand(transcript)
+      const parsed = parseQuickCommand(transcript)
+      if (parsed) {
+        submitQuickExpense(parsed).then(() => {
+          setMessage('Despesa registrada por voz.')
+        })
+      } else {
+        setMessage('Não entendi o valor. Corrija o texto e clique em Registrar.')
+      }
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+      recognitionRef.current = null
+    }
+
+    recognition.onerror = (event: { error: string }) => {
+      setIsListening(false)
+      recognitionRef.current = null
+      if (event.error === 'not-allowed') {
+        setMessage('Microfone bloqueado. Permita o acesso nas configurações do navegador.')
+      } else {
+        setMessage('Erro ao ouvir. Tente de novo.')
+      }
+    }
+
+    recognition.start()
+  }
+
+  function stopVoiceInput() {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setIsListening(false)
   }
 
   async function handleCreateCategory(event: React.FormEvent) {
@@ -677,8 +770,17 @@ function App() {
                 <button type="submit" disabled={loading}>
                   {loading ? '...' : 'Registrar'}
                 </button>
+                <button
+                  type="button"
+                  className={`voice-btn ${isListening ? 'listening' : ''}`}
+                  onClick={isListening ? stopVoiceInput : startVoiceInput}
+                  title={isListening ? 'Parar gravação' : 'Registrar por voz'}
+                  aria-label={isListening ? 'Parar gravação' : 'Registrar despesa por voz'}
+                >
+                  {isListening ? '⏹ Parar' : '🎤 Voz'}
+                </button>
               </form>
-              <p className="hint">Digite valor e descrição (ex.: &quot;Abasteci R$ 50&quot;) para registrar uma despesa do dia.</p>
+              <p className="hint">Digite ou use o botão &quot;Voz&quot; e fale: &quot;Abasteci 50 reais&quot;, &quot;30 reais mercado&quot;, etc.</p>
             </section>
 
             <nav className="tabs">
