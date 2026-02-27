@@ -161,27 +161,8 @@ function Resumo() {
         </div>
       </div>
 
-      <div className="expense-sums">
-        <p><strong>Somas do mês:</strong></p>
-        <p>Despesas realizadas (apenas transações lançadas em Transações → Gastos; contas a pagar não entram aqui): <span className="expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span></p>
-        <p>Total contas a pagar (só vencimentos em aberto; conta só some daqui quando você clicar &quot;Marcar paga&quot;): <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
-        <p className="expense-sums-hint">&quot;Marcar paga&quot; só tira a conta da lista; não cria despesa. Para aparecer em Despesas realizadas, lance em Transações → Gastos quando pagar.</p>
-        <button
-          type="button"
-          className="btn-reset-month"
-          onClick={async () => {
-            if (!window.confirm(`Apagar todas as transações (gastos e receitas) de ${formatMonthLabel(selectedMonth)}? Não apaga contas a pagar.`)) return
-            try {
-              await api.deleteTransactionsInPeriod(from, to)
-              await load()
-            } catch (e) {
-              console.error(e)
-            }
-          }}
-        >
-          Limpar transações deste mês
-        </button>
-      </div>
+      <p className="line-total">Contas a pagar: <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
+      <button type="button" className="link-btn" onClick={async () => { if (window.confirm(`Limpar todas as transações de ${formatMonthLabel(selectedMonth)}?`)) { try { await api.deleteTransactionsInPeriod(from, to); await load(); } catch (e) { console.error(e); } } }}>Limpar transações do mês</button>
 
       {(overviewFilter === 'tudo' || overviewFilter === 'contas') && openBills.length > 0 && (
         <section className="section">
@@ -291,6 +272,9 @@ function Transacoes() {
   const [rEditAmount, setREditAmount] = useState('')
   const [rEditDate, setREditDate] = useState('')
   const [rEditCategoryId, setREditCategoryId] = useState('')
+
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [editModal, setEditModal] = useState<'gasto'|'conta'|'receita'|null>(null)
 
   const { from, to } = getMonthBounds(selectedMonth)
 
@@ -425,12 +409,14 @@ function Transacoes() {
     }
   }
 
-  function startEditGasto(t: { id: string; description?: string | null; amount: number; date: string; categoryId?: string | null }) {
+  function openEditGasto(t: { id: string; description?: string | null; amount: number; date: string; categoryId?: string | null }) {
     setEditingGastoId(t.id)
     setGEditDesc(t.description || '')
     setGEditAmount(String(t.amount))
     setGEditDate(t.date.slice(0, 10))
     setGEditCategoryId(t.categoryId || '')
+    setEditModal('gasto')
+    setMenuOpenId(null)
   }
   async function saveEditGasto() {
     if (!editingGastoId) return
@@ -439,17 +425,20 @@ function Transacoes() {
     try {
       await api.updateTransaction(editingGastoId, { amount: num, description: gEditDesc.trim() || undefined, date: gEditDate, categoryId: gEditCategoryId || undefined })
       setEditingGastoId(null)
+      setEditModal(null)
       await loadGastos()
     } catch (e) { console.error(e) }
   }
 
-  function startEditBill(b: { id: string; description: string; amount: number; dueDate: string; categoryId?: string | null; recurrence?: string }) {
+  function openEditBill(b: { id: string; description: string; amount: number; dueDate: string; categoryId?: string | null; recurrence?: string }) {
     setEditingBillId(b.id)
     setCEditDesc(b.description)
     setCEditAmount(String(b.amount))
     setCEditDueDate(b.dueDate.slice(0, 10))
     setCEditCategoryId(b.categoryId || '')
     setCEditRecurring(b.recurrence === 'MONTHLY')
+    setEditModal('conta')
+    setMenuOpenId(null)
   }
   async function saveEditBill() {
     if (!editingBillId) return
@@ -458,6 +447,7 @@ function Transacoes() {
     try {
       await api.updateBill(editingBillId, { description: cEditDesc.trim(), amount: num, dueDate: cEditDueDate, categoryId: cEditCategoryId || undefined, recurrence: cEditRecurring ? 'MONTHLY' : 'NONE' })
       setEditingBillId(null)
+      setEditModal(null)
       await loadBills()
     } catch (e) { console.error(e) }
   }
@@ -467,14 +457,17 @@ function Transacoes() {
       await api.deleteBill(id)
       await loadBills()
     } catch (e) { console.error(e) }
+    setMenuOpenId(null)
   }
 
-  function startEditReceita(t: { id: string; description?: string | null; amount: number; date: string; categoryId?: string | null }) {
+  function openEditReceita(t: { id: string; description?: string | null; amount: number; date: string; categoryId?: string | null }) {
     setEditingReceitaId(t.id)
     setREditDesc(t.description || '')
     setREditAmount(String(t.amount))
     setREditDate(t.date.slice(0, 10))
     setREditCategoryId(t.categoryId || '')
+    setEditModal('receita')
+    setMenuOpenId(null)
   }
   async function saveEditReceita() {
     if (!editingReceitaId) return
@@ -483,6 +476,7 @@ function Transacoes() {
     try {
       await api.updateTransaction(editingReceitaId, { amount: num, type: 'INCOME', description: rEditDesc.trim() || undefined, date: rEditDate, categoryId: rEditCategoryId || undefined })
       setEditingReceitaId(null)
+      setEditModal(null)
       await loadReceitas()
     } catch (e) { console.error(e) }
   }
@@ -513,43 +507,32 @@ function Transacoes() {
 
       {txViewMode === 'gastos' && (
         <>
-          <h3>Novo gasto</h3>
-          <form onSubmit={handleAddGasto} className="form-block">
+          <form onSubmit={handleAddGasto} className="form-block form-compact">
             <input placeholder="Descrição" value={gDesc} onChange={(e) => setGDesc(e.target.value)} />
             <input placeholder="Valor" type="text" inputMode="decimal" value={gAmount} onChange={(e) => setGAmount(e.target.value)} required />
-            <input type="date" value={gDate} onChange={(e) => setGDate(e.target.value)} required />
-            <select value={gCategoryId} onChange={(e) => setGCategoryId(e.target.value)}>
-              <option value="">Categoria</option>
-              {categoriesGastos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <button type="submit" disabled={gSending}>{gSending ? 'Salvando...' : 'Adicionar'}</button>
+            <input type="date" value={gDate} onChange={(e) => setGDate(e.target.value)} />
+            <select value={gCategoryId} onChange={(e) => setGCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesGastos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <button type="submit" disabled={gSending}>{gSending ? '...' : '+'}</button>
           </form>
-          <h3>Gastos do mês</h3>
-          <ul className="tx-list">
+          <ul className="tx-list tx-list-slim">
             {gastosList.map((t) => (
               <li key={t.id}>
-                {editingGastoId === t.id ? (
-                  <div className="edit-row">
-                    <input placeholder="Descrição" value={gEditDesc} onChange={(e) => setGEditDesc(e.target.value)} />
-                    <input placeholder="Valor" value={gEditAmount} onChange={(e) => setGEditAmount(e.target.value)} />
-                    <input type="date" value={gEditDate} onChange={(e) => setGEditDate(e.target.value)} />
-                    <select value={gEditCategoryId} onChange={(e) => setGEditCategoryId(e.target.value)}>
-                      <option value="">Categoria</option>
-                      {categoriesGastos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <button type="button" className="btn-save" onClick={saveEditGasto}>Salvar</button>
-                    <button type="button" className="btn-delete" onClick={() => setEditingGastoId(null)}>Cancelar</button>
+                <span>{formatDateBR(t.date)} {t.description || '-'}</span>
+                <span className="row-right">
+                  <span className="expense">R$ {t.amount.toFixed(2)}</span>
+                  <div className="menu-wrap">
+                    <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)} aria-label="Ações">⋮</button>
+                    {menuOpenId === t.id && (
+                      <>
+                        <div className="menu-backdrop" onClick={() => setMenuOpenId(null)} />
+                        <div className="menu-dropdown">
+                          <button type="button" onClick={() => openEditGasto(t)}>Editar</button>
+                          <button type="button" onClick={async () => { try { await api.deleteTransaction(t.id); await loadGastos(); setMenuOpenId(null); } catch (e) { console.error(e); } }}>Excluir</button>
+                        </div>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <span>{formatDateBR(t.date)} {t.description || '-'}</span>
-                    <span>
-                      <span className="expense">- R$ {t.amount.toFixed(2)}</span>
-                      <button type="button" className="btn-edit" onClick={() => startEditGasto(t)}>Editar</button>
-                      <button type="button" className="btn-delete" onClick={async () => { try { await api.deleteTransaction(t.id); await loadGastos(); } catch (e) { console.error(e); } }}>Excluir</button>
-                    </span>
-                  </>
-                )}
+                </span>
               </li>
             ))}
           </ul>
@@ -559,100 +542,121 @@ function Transacoes() {
 
       {txViewMode === 'contas' && (
         <>
-          <h3>Nova conta a pagar</h3>
-          <form onSubmit={handleAddConta} className="form-block">
+          <form onSubmit={handleAddConta} className="form-block form-compact">
             <input placeholder="Descrição" value={cDesc} onChange={(e) => setCDesc(e.target.value)} required />
             <input placeholder="Valor" type="text" inputMode="decimal" value={cAmount} onChange={(e) => setCAmount(e.target.value)} required />
             <input type="date" value={cDueDate} onChange={(e) => setCDueDate(e.target.value)} required />
-            <select value={cCategoryId} onChange={(e) => setCCategoryId(e.target.value)}>
-              <option value="">Categoria</option>
-              {categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={cRecurring} onChange={(e) => setCRecurring(e.target.checked)} />
-              Repetir todo mês
-            </label>
-            <button type="submit" disabled={cSending}>{cSending ? 'Salvando...' : 'Adicionar'}</button>
+            <select value={cCategoryId} onChange={(e) => setCCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <label className="checkbox-label"><input type="checkbox" checked={cRecurring} onChange={(e) => setCRecurring(e.target.checked)} /> Repetir</label>
+            <button type="submit" disabled={cSending}>{cSending ? '...' : '+'}</button>
           </form>
-          <h3>Contas do mês</h3>
-          <ul className="bill-list">
+          <ul className="bill-list tx-list-slim">
             {bills.map((b) => (
               <li key={b.id}>
-                {editingBillId === b.id ? (
-                  <div className="edit-row">
-                    <input placeholder="Descrição" value={cEditDesc} onChange={(e) => setCEditDesc(e.target.value)} />
-                    <input placeholder="Valor" value={cEditAmount} onChange={(e) => setCEditAmount(e.target.value)} />
-                    <input type="date" value={cEditDueDate} onChange={(e) => setCEditDueDate(e.target.value)} />
-                    <select value={cEditCategoryId} onChange={(e) => setCEditCategoryId(e.target.value)}>
-                      <option value="">Categoria</option>
-                      {categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <label className="checkbox-label"><input type="checkbox" checked={cEditRecurring} onChange={(e) => setCEditRecurring(e.target.checked)} /> Repetir mês</label>
-                    <button type="button" className="btn-save" onClick={saveEditBill}>Salvar</button>
-                    <button type="button" className="btn-delete" onClick={() => setEditingBillId(null)}>Cancelar</button>
+                <span>{b.description} — {formatDateBR(b.dueDate)}</span>
+                <span className="row-right">
+                  <span className="expense">R$ {b.amount.toFixed(2)}</span>
+                  <div className="menu-wrap">
+                    <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === b.id ? null : b.id)} aria-label="Ações">⋮</button>
+                    {menuOpenId === b.id && (
+                      <>
+                        <div className="menu-backdrop" onClick={() => setMenuOpenId(null)} />
+                        <div className="menu-dropdown">
+                          <button type="button" onClick={() => handlePayBill(b.id)}>Marcar paga</button>
+                          <button type="button" onClick={() => openEditBill(b)}>Editar</button>
+                          <button type="button" onClick={() => handleDeleteBill(b.id)}>Excluir</button>
+                        </div>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <span>{b.description} — {formatDateBR(b.dueDate)}</span>
-                    <span>
-                      <span className="expense">R$ {b.amount.toFixed(2)}</span>
-                      <button type="button" className="btn-pay" onClick={() => handlePayBill(b.id)}>Marcar paga</button>
-                      <button type="button" className="btn-edit" onClick={() => startEditBill(b)}>Editar</button>
-                      <button type="button" className="btn-delete" onClick={() => handleDeleteBill(b.id)}>Excluir</button>
-                    </span>
-                  </>
-                )}
+                </span>
               </li>
             ))}
           </ul>
-          {bills.length === 0 && <p className="muted">Nenhuma conta em aberto neste mês.</p>}
+          {bills.length === 0 && <p className="muted">Nenhuma conta neste mês.</p>}
         </>
       )}
 
       {txViewMode === 'receitas' && (
         <>
-          <h3>Nova receita</h3>
-          <form onSubmit={handleAddReceita} className="form-block">
+          <form onSubmit={handleAddReceita} className="form-block form-compact">
             <input placeholder="Descrição" value={rDesc} onChange={(e) => setRDesc(e.target.value)} />
             <input placeholder="Valor" type="text" inputMode="decimal" value={rAmount} onChange={(e) => setRAmount(e.target.value)} required />
-            <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} required />
-            <select value={rCategoryId} onChange={(e) => setRCategoryId(e.target.value)}>
-              <option value="">Categoria (Salário, Vendas, etc.)</option>
-              {categoriesReceitas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <button type="submit" disabled={rSending}>{rSending ? 'Salvando...' : 'Adicionar'}</button>
+            <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} />
+            <select value={rCategoryId} onChange={(e) => setRCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesReceitas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <button type="submit" disabled={rSending}>{rSending ? '...' : '+'}</button>
           </form>
-          <h3>Receitas do mês</h3>
-          <ul className="tx-list">
+          <ul className="tx-list tx-list-slim">
             {receitasList.map((t) => (
               <li key={t.id}>
-                {editingReceitaId === t.id ? (
-                  <div className="edit-row">
-                    <input placeholder="Descrição" value={rEditDesc} onChange={(e) => setREditDesc(e.target.value)} />
-                    <input placeholder="Valor" value={rEditAmount} onChange={(e) => setREditAmount(e.target.value)} />
-                    <input type="date" value={rEditDate} onChange={(e) => setREditDate(e.target.value)} />
-                    <select value={rEditCategoryId} onChange={(e) => setREditCategoryId(e.target.value)}>
-                      <option value="">Categoria</option>
-                      {categoriesReceitas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <button type="button" className="btn-save" onClick={saveEditReceita}>Salvar</button>
-                    <button type="button" className="btn-delete" onClick={() => setEditingReceitaId(null)}>Cancelar</button>
+                <span>{formatDateBR(t.date)} {t.description || '-'}</span>
+                <span className="row-right">
+                  <span className="income">R$ {t.amount.toFixed(2)}</span>
+                  <div className="menu-wrap">
+                    <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)} aria-label="Ações">⋮</button>
+                    {menuOpenId === t.id && (
+                      <>
+                        <div className="menu-backdrop" onClick={() => setMenuOpenId(null)} />
+                        <div className="menu-dropdown">
+                          <button type="button" onClick={() => openEditReceita(t)}>Editar</button>
+                          <button type="button" onClick={async () => { try { await api.deleteTransaction(t.id); await loadReceitas(); setMenuOpenId(null); } catch (e) { console.error(e); } }}>Excluir</button>
+                        </div>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <span>{formatDateBR(t.date)} {t.description || '-'}</span>
-                    <span>
-                      <span className="income">+ R$ {t.amount.toFixed(2)}</span>
-                      <button type="button" className="btn-edit" onClick={() => startEditReceita(t)}>Editar</button>
-                      <button type="button" className="btn-delete" onClick={async () => { try { await api.deleteTransaction(t.id); await loadReceitas(); } catch (e) { console.error(e); } }}>Excluir</button>
-                    </span>
-                  </>
-                )}
+                </span>
               </li>
             ))}
           </ul>
           {receitasList.length === 0 && <p className="muted">Nenhuma receita neste mês.</p>}
         </>
+      )}
+
+      {editModal === 'gasto' && (
+        <div className="modal-backdrop" onClick={() => { setEditModal(null); setEditingGastoId(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Editar gasto</h3>
+            <input placeholder="Descrição" value={gEditDesc} onChange={(e) => setGEditDesc(e.target.value)} />
+            <input placeholder="Valor" value={gEditAmount} onChange={(e) => setGEditAmount(e.target.value)} />
+            <input type="date" value={gEditDate} onChange={(e) => setGEditDate(e.target.value)} />
+            <select value={gEditCategoryId} onChange={(e) => setGEditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesGastos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <div className="modal-actions">
+              <button type="button" className="btn-save" onClick={saveEditGasto}>Salvar</button>
+              <button type="button" onClick={() => { setEditModal(null); setEditingGastoId(null); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editModal === 'conta' && (
+        <div className="modal-backdrop" onClick={() => { setEditModal(null); setEditingBillId(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Editar conta</h3>
+            <input placeholder="Descrição" value={cEditDesc} onChange={(e) => setCEditDesc(e.target.value)} />
+            <input placeholder="Valor" value={cEditAmount} onChange={(e) => setCEditAmount(e.target.value)} />
+            <input type="date" value={cEditDueDate} onChange={(e) => setCEditDueDate(e.target.value)} />
+            <select value={cEditCategoryId} onChange={(e) => setCEditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <label className="checkbox-label"><input type="checkbox" checked={cEditRecurring} onChange={(e) => setCEditRecurring(e.target.checked)} /> Repetir todo mês</label>
+            <div className="modal-actions">
+              <button type="button" className="btn-save" onClick={saveEditBill}>Salvar</button>
+              <button type="button" onClick={() => { setEditModal(null); setEditingBillId(null); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editModal === 'receita' && (
+        <div className="modal-backdrop" onClick={() => { setEditModal(null); setEditingReceitaId(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Editar receita</h3>
+            <input placeholder="Descrição" value={rEditDesc} onChange={(e) => setREditDesc(e.target.value)} />
+            <input placeholder="Valor" value={rEditAmount} onChange={(e) => setREditAmount(e.target.value)} />
+            <input type="date" value={rEditDate} onChange={(e) => setREditDate(e.target.value)} />
+            <select value={rEditCategoryId} onChange={(e) => setREditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesReceitas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <div className="modal-actions">
+              <button type="button" className="btn-save" onClick={saveEditReceita}>Salvar</button>
+              <button type="button" onClick={() => { setEditModal(null); setEditingReceitaId(null); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
