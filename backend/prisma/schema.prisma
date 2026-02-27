@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CategoryKind {
+  EXPENSE_FIXED
+  EXPENSE_VARIABLE
+  INCOME
+}
+
+enum TransactionType {
+  EXPENSE
+  INCOME
+}
+
+enum BillRecurrence {
+  NONE
+  MONTHLY
+  WEEKLY
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  transactions Transaction[]
+  bills        Bill[]
+  categories   Category[]
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  name      String
+  kind      CategoryKind
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime     @default(now())
+
+  transactions Transaction[]
+  bills        Bill[]
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  category    Category?       @relation(fields: [categoryId], references: [id])
+  categoryId  String?
+  type        TransactionType
+  amount      Decimal
+  description String?
+  date        DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+}
+
+model Bill {
+  id           String        @id @default(cuid())
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  category     Category?     @relation(fields: [categoryId], references: [id])
+  categoryId   String?
+  description  String
+  amount       Decimal
+  dueDate      DateTime
+  recurrence   BillRecurrence @default(NONE)
+  paid         Boolean       @default(false)
+  paidAt       DateTime?
+  reminderDays Int           @default(1)
+  createdAt    DateTime      @default(now())
+}
+
