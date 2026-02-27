@@ -52,17 +52,6 @@ type Bill = {
   paid: boolean
 }
 
-type BillTemplate = {
-  id: string
-  description: string
-  amount: number
-  categoryId?: string | null
-  dueDay: number
-  recurrence: string
-  active: boolean
-  reminderDays: number
-}
-
 type CategoryKind = 'EXPENSE_FIXED' | 'EXPENSE_VARIABLE' | 'INCOME'
 
 type Category = {
@@ -179,8 +168,6 @@ function App() {
   const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
-  const [loadingBills, setLoadingBills] = useState(false)
-  const [billTemplates, setBillTemplates] = useState<BillTemplate[]>([])
   const [advice, setAdvice] = useState<AdviceResponse | null>(null)
   const [loadingAdvice, setLoadingAdvice] = useState(false)
 
@@ -192,14 +179,6 @@ function App() {
     const d = new Date()
     return d.toISOString().slice(0, 10)
   })
-
-  const [newBillDescription, setNewBillDescription] = useState('')
-  const [newBillAmount, setNewBillAmount] = useState('')
-  const [newBillDueDate, setNewBillDueDate] = useState(() => {
-    const d = new Date()
-    return d.toISOString().slice(0, 10)
-  })
-  const [newBillCategoryId, setNewBillCategoryId] = useState<string>('')
 
   const [quickCommand, setQuickCommand] = useState('')
   const [isListening, setIsListening] = useState(false)
@@ -590,45 +569,7 @@ function App() {
     }
   }
 
-  async function loadBillsList() {
-    if (!token) return
-    setLoadingBills(true)
-    try {
-      await ensureCategories()
-      const { from, to } = getMonthRange(selectedMonth)
-      const params = new URLSearchParams()
-      params.set('status', 'open')
-      params.set('from', from)
-      params.set('to', to)
-      const res = await fetch(`${API_BASE_URL}/bills?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (res.ok) {
-        const data = (await res.json()) as Bill[]
-        setBills(data)
-      }
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setLoadingBills(false)
-    }
-  }
-
-  async function loadBillTemplates() {
-    if (!token) return
-    try {
-      await ensureCategories()
-      const res = await fetch(`${API_BASE_URL}/bill-templates`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (res.ok) {
-        const data = (await res.json()) as BillTemplate[]
-        setBillTemplates(data)
-      }
-    } catch (error) {
-      console.error(error)
-    }
-  }
+  // Mantemos as contas em aberto carregadas via /months/:ym/overview no loadDashboard.
 
   async function loadAdviceData() {
     if (!token) return
@@ -972,149 +913,6 @@ function App() {
     }
   }
 
-  async function handleCreateBill(event: React.FormEvent) {
-    event.preventDefault()
-    if (!token) return
-    const amount = Number(newBillAmount.replace(',', '.'))
-    if (!amount || Number.isNaN(amount)) {
-      setMessage('Informe um valor válido para a conta.')
-      return
-    }
-
-    try {
-      setLoading(true)
-      const res = await fetch(`${API_BASE_URL}/bills`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          description: newBillDescription,
-          amount,
-          dueDate: newBillDueDate,
-          categoryId: newBillCategoryId || undefined,
-        }),
-      })
-
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { message?: string } | null
-        setMessage(body?.message || 'Erro ao criar conta.')
-        return
-      }
-
-      setNewBillDescription('')
-      setNewBillAmount('')
-      setNewBillCategoryId('')
-      setNewBillDueDate(new Date().toISOString().slice(0, 10))
-      await loadBillsList()
-      await loadDashboard()
-      setMessage('Conta criada com sucesso.')
-    } catch (error) {
-      console.error(error)
-      setMessage('Erro inesperado ao criar conta.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-
-  async function handleToggleTemplateActive(id: string, current: boolean) {
-    if (!token) return
-    try {
-      const res = await fetch(`${API_BASE_URL}/bill-templates/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ active: !current }),
-      })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { message?: string } | null
-        setMessage(body?.message || 'Erro ao atualizar modelo.')
-        return
-      }
-      await loadBillTemplates()
-    } catch (error) {
-      console.error(error)
-      setMessage('Erro inesperado ao atualizar modelo.')
-    }
-  }
-
-  async function handleDeleteTemplate(id: string) {
-    if (!token) return
-    if (!window.confirm('Remover este modelo de conta fixa?')) return
-    try {
-      const res = await fetch(`${API_BASE_URL}/bill-templates/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      if (res.status !== 204) {
-        const body = (await res.json().catch(() => null)) as { message?: string } | null
-        setMessage(body?.message || 'Erro ao remover modelo.')
-        return
-      }
-      await loadBillTemplates()
-    } catch (error) {
-      console.error(error)
-      setMessage('Erro inesperado ao remover modelo.')
-    }
-  }
-
-  async function handleGenerateBillsForMonth() {
-    if (!token) return
-    try {
-      setLoading(true)
-      const params = new URLSearchParams()
-      params.set('month', selectedMonth)
-      const res = await fetch(`${API_BASE_URL}/bills/generate?${params.toString()}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const body = (await res.json().catch(() => null)) as { message?: string } | null
-      if (!res.ok) {
-        setMessage(body?.message || 'Erro ao gerar contas do mês.')
-        return
-      }
-      await loadBillsList()
-      await loadDashboard()
-      setMessage('Contas do mês geradas a partir dos modelos.')
-    } catch (error) {
-      console.error(error)
-      setMessage('Erro inesperado ao gerar contas do mês.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handlePayBill(id: string) {
-    if (!token) return
-    try {
-      setLoading(true)
-      const res = await fetch(`${API_BASE_URL}/bills/${id}/pay`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { message?: string } | null
-        setMessage(body?.message || 'Erro ao marcar conta como paga.')
-        return
-      }
-      await loadBillsList()
-      await loadDashboard()
-      setMessage('Conta marcada como paga.')
-    } catch (error) {
-      console.error(error)
-      setMessage('Erro inesperado ao marcar conta como paga.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   function handleLogout() {
     localStorage.removeItem('assesor_token')
