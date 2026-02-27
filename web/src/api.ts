@@ -1,0 +1,102 @@
+const API_URL = import.meta.env.VITE_API_URL || '';
+
+export interface AuthResponse {
+  token: string;
+  user: { id: string; email: string; name?: string | null };
+}
+
+let authToken: string | null = localStorage.getItem('token');
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) localStorage.setItem('token', token);
+  else localStorage.removeItem('token');
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+  if (authToken) (headers as Record<string, string>)['Authorization'] = `Bearer ${authToken}`;
+
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  if (res.status === 401) {
+    setAuthToken(null);
+    window.location.reload();
+    throw new Error('Sessão expirada');
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Erro na requisição');
+  }
+  return res.json();
+}
+
+export const api = {
+  async login(email: string, password: string) {
+    const data = await request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    setAuthToken(data.token);
+    return data;
+  },
+  async register(email: string, password: string, name?: string) {
+    const data = await request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    });
+    setAuthToken(data.token);
+    return data;
+  },
+  async getSummary(from?: string, to?: string) {
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const qs = params.toString();
+    return request<{ totalIncome: number; totalExpense: number; balance: number }>(
+      `/transactions/summary${qs ? `?${qs}` : ''}`
+    );
+  },
+  async getCategorySummary(from?: string, to?: string) {
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const qs = params.toString();
+    return request<{
+      categories: { id: string; name: string; kind: string; income: number; expense: number }[];
+      byKind: { fixed: number; variable: number; income: number };
+    }>(`/transactions/summary/by-category${qs ? `?${qs}` : ''}`);
+  },
+  async listBills(status?: 'open' | 'paid') {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    const qs = params.toString();
+    return request<{ id: string; description: string; amount: number; dueDate: string; paid: boolean }[]>(
+      `/bills${qs ? `?${qs}` : ''}`
+    );
+  },
+  async createBill(input: { description: string; amount: number; dueDate: string; categoryId?: string }) {
+    return request('/bills', { method: 'POST', body: JSON.stringify(input) });
+  },
+  async payBill(id: string) {
+    return request(`/bills/${id}/pay`, { method: 'PATCH' });
+  },
+  async listTransactions() {
+    return request<{ id: string; amount: number; type: string; description?: string | null; date: string }[]>(
+      '/transactions'
+    );
+  },
+  async createTransaction(input: { amount: number; type: 'INCOME' | 'EXPENSE'; description?: string; categoryId?: string; date?: string }) {
+    return request('/transactions', { method: 'POST', body: JSON.stringify(input) });
+  },
+  async listCategories() {
+    return request<{ id: string; name: string; kind: string }[]>('/categories');
+  },
+  async getFinancialAdvice() {
+    return request<{
+      advices: { id: string; severity: string; title: string; message: string }[];
+    }>('/advice/financial');
+  },
+};
