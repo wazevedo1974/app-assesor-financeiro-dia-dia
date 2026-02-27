@@ -68,30 +68,52 @@ function Login({ onLogin }: { onLogin: () => void }) {
 }
 
 // --- Resumo (seletor de mês + filtros Tudo/Gastos/Contas/Receitas) ---
+type Category = { id: string; name: string; kind: string }
+
 function Resumo() {
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
   const [overviewFilter, setOverviewFilter] = useState<OverviewFilter>('tudo')
   const [summary, setSummary] = useState<{ totalIncome: number; totalExpense: number; balance: number } | null>(null)
-  const [openBills, setOpenBills] = useState<{ id: string; description: string; amount: number; dueDate: string }[]>([])
-  const [transactions, setTransactions] = useState<{ id: string; amount: number; type: string; description?: string | null; date: string }[]>([])
+  const [openBills, setOpenBills] = useState<{ id: string; description: string; amount: number; dueDate: string; categoryId?: string | null; recurrence?: string }[]>([])
+  const [transactions, setTransactions] = useState<{ id: string; amount: number; type: string; description?: string | null; date: string; categoryId?: string | null }[]>([])
   const [advices, setAdvices] = useState<{ id: string; severity: string; title: string; message: string }[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [editModal, setEditModal] = useState<'conta'|'tx'|null>(null)
+  const [editingBillId, setEditingBillId] = useState<string | null>(null)
+  const [cEditDesc, setCEditDesc] = useState('')
+  const [cEditAmount, setCEditAmount] = useState('')
+  const [cEditDueDate, setCEditDueDate] = useState('')
+  const [cEditCategoryId, setCEditCategoryId] = useState('')
+  const [cEditRecurring, setCEditRecurring] = useState(false)
+  const [editingTxId, setEditingTxId] = useState<string | null>(null)
+  const [txEditDesc, setTxEditDesc] = useState('')
+  const [txEditAmount, setTxEditAmount] = useState('')
+  const [txEditDate, setTxEditDate] = useState('')
+  const [txEditCategoryId, setTxEditCategoryId] = useState('')
+  const [txEditType, setTxEditType] = useState<'INCOME'|'EXPENSE'>('EXPENSE')
 
   const { from, to } = getMonthBounds(selectedMonth)
+  const categoriesContas = categories.filter((c) => c.kind === 'EXPENSE_FIXED' || c.kind === 'EXPENSE_VARIABLE')
+  const categoriesGastos = categories.filter((c) => c.kind === 'EXPENSE_VARIABLE')
+  const categoriesReceitas = categories.filter((c) => c.kind === 'INCOME')
 
   async function load() {
     setLoading(true)
     try {
-      const [sum, bills, txs, advice] = await Promise.all([
+      const [sum, bills, txs, advice, cats] = await Promise.all([
         api.getSummary(from, to),
         api.listBills('open', from, to),
         api.listTransactions(from, to),
         api.getFinancialAdvice(),
+        api.listCategories(),
       ])
       setSummary(sum)
       setOpenBills(bills)
       setTransactions(txs)
       setAdvices(advice.advices || [])
+      setCategories(cats)
     } catch (err) {
       console.error(err)
     } finally {
@@ -100,6 +122,64 @@ function Resumo() {
   }
 
   useEffect(() => { load() }, [selectedMonth])
+
+  function openEditBill(b: { id: string; description: string; amount: number; dueDate: string; categoryId?: string | null; recurrence?: string }) {
+    setEditingBillId(b.id)
+    setCEditDesc(b.description)
+    setCEditAmount(String(b.amount))
+    setCEditDueDate(b.dueDate.slice(0, 10))
+    setCEditCategoryId(b.categoryId || '')
+    setCEditRecurring(b.recurrence === 'MONTHLY')
+    setEditModal('conta')
+    setMenuOpenId(null)
+  }
+  async function saveEditBill() {
+    if (!editingBillId) return
+    const num = Number(cEditAmount.replace(',', '.'))
+    if (!cEditDesc.trim() || isNaN(num) || num <= 0 || !cEditDueDate) return
+    try {
+      await api.updateBill(editingBillId, { description: cEditDesc.trim(), amount: num, dueDate: cEditDueDate, categoryId: cEditCategoryId || undefined, recurrence: cEditRecurring ? 'MONTHLY' : 'NONE' })
+      setEditingBillId(null)
+      setEditModal(null)
+      await load()
+    } catch (e) { console.error(e) }
+  }
+  async function handlePayBill(id: string) {
+    try { await api.payBill(id); await load(); } catch (e) { console.error(e) }
+    setMenuOpenId(null)
+  }
+  async function handleDeleteBill(id: string) {
+    if (!window.confirm('Excluir esta conta?')) return
+    try { await api.deleteBill(id); await load(); } catch (e) { console.error(e) }
+    setMenuOpenId(null)
+  }
+
+  function openEditTx(t: { id: string; description?: string | null; amount: number; date: string; type: string; categoryId?: string | null }) {
+    setEditingTxId(t.id)
+    setTxEditDesc(t.description || '')
+    setTxEditAmount(String(t.amount))
+    setTxEditDate(t.date.slice(0, 10))
+    setTxEditCategoryId(t.categoryId || '')
+    setTxEditType(t.type === 'INCOME' ? 'INCOME' : 'EXPENSE')
+    setEditModal('tx')
+    setMenuOpenId(null)
+  }
+  async function saveEditTx() {
+    if (!editingTxId) return
+    const num = Number(txEditAmount.replace(',', '.'))
+    if (isNaN(num) || num <= 0) return
+    try {
+      await api.updateTransaction(editingTxId, { amount: num, type: txEditType, description: txEditDesc.trim() || undefined, date: txEditDate, categoryId: txEditCategoryId || undefined })
+      setEditingTxId(null)
+      setEditModal(null)
+      await load()
+    } catch (e) { console.error(e) }
+  }
+  async function handleDeleteTx(id: string) {
+    if (!window.confirm('Excluir este lançamento?')) return
+    try { await api.deleteTransaction(id); await load(); } catch (e) { console.error(e) }
+    setMenuOpenId(null)
+  }
 
   function prevMonth() {
     const [y, m] = selectedMonth.split('-').map(Number)
@@ -169,11 +249,26 @@ function Resumo() {
           <h3>Contas a pagar</h3>
           <div className="card">
             <p className="label">Total: R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</p>
-            <ul className="bill-list">
+            <ul className="bill-list tx-list-slim">
               {filteredBills.map((b) => (
                 <li key={b.id}>
                   <span>{b.description} — vence {formatDateBR(b.dueDate)}</span>
-                  <span className="expense">R$ {b.amount.toFixed(2)}</span>
+                  <span className="row-right">
+                    <span className="expense">R$ {b.amount.toFixed(2)}</span>
+                    <div className="menu-wrap">
+                      <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === b.id ? null : b.id)} aria-label="Ações">⋮</button>
+                      {menuOpenId === b.id && (
+                        <>
+                          <div className="menu-backdrop" onClick={() => setMenuOpenId(null)} />
+                          <div className="menu-dropdown">
+                            <button type="button" onClick={() => handlePayBill(b.id)}>Marcar paga</button>
+                            <button type="button" onClick={() => openEditBill(b)}>Editar</button>
+                            <button type="button" onClick={() => handleDeleteBill(b.id)}>Excluir</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -184,12 +279,26 @@ function Resumo() {
       {(overviewFilter === 'tudo' || overviewFilter === 'gastos' || overviewFilter === 'receitas') && filteredTx.length > 0 && (
         <section className="section">
           <h3>Movimentações</h3>
-          <ul className="tx-list">
+          <ul className="tx-list tx-list-slim">
             {filteredTx.map((t) => (
               <li key={t.id}>
                 <span>{formatDateBR(t.date)} {t.description || '-'}</span>
-                <span className={t.type === 'INCOME' ? 'income' : 'expense'}>
-                  {t.type === 'INCOME' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                <span className="row-right">
+                  <span className={t.type === 'INCOME' ? 'income' : 'expense'}>
+                    {t.type === 'INCOME' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                  </span>
+                  <div className="menu-wrap">
+                    <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)} aria-label="Ações">⋮</button>
+                    {menuOpenId === t.id && (
+                      <>
+                        <div className="menu-backdrop" onClick={() => setMenuOpenId(null)} />
+                        <div className="menu-dropdown">
+                          <button type="button" onClick={() => openEditTx(t)}>Editar</button>
+                          <button type="button" onClick={() => handleDeleteTx(t.id)}>Excluir</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </span>
               </li>
             ))}
@@ -215,12 +324,46 @@ function Resumo() {
           ))}
         </section>
       )}
+
+      {editModal === 'conta' && (
+        <div className="modal-backdrop" onClick={() => { setEditModal(null); setEditingBillId(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Editar conta</h3>
+            <input placeholder="Descrição" value={cEditDesc} onChange={(e) => setCEditDesc(e.target.value)} />
+            <input placeholder="Valor" value={cEditAmount} onChange={(e) => setCEditAmount(e.target.value)} />
+            <input type="date" value={cEditDueDate} onChange={(e) => setCEditDueDate(e.target.value)} />
+            <select value={cEditCategoryId} onChange={(e) => setCEditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <label className="checkbox-label"><input type="checkbox" checked={cEditRecurring} onChange={(e) => setCEditRecurring(e.target.checked)} /> Repetir todo mês</label>
+            <div className="modal-actions">
+              <button type="button" className="btn-save" onClick={saveEditBill}>Salvar</button>
+              <button type="button" onClick={() => { setEditModal(null); setEditingBillId(null); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editModal === 'tx' && (
+        <div className="modal-backdrop" onClick={() => { setEditModal(null); setEditingTxId(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{txEditType === 'INCOME' ? 'Editar receita' : 'Editar gasto'}</h3>
+            <input placeholder="Descrição" value={txEditDesc} onChange={(e) => setTxEditDesc(e.target.value)} />
+            <input placeholder="Valor" value={txEditAmount} onChange={(e) => setTxEditAmount(e.target.value)} />
+            <input type="date" value={txEditDate} onChange={(e) => setTxEditDate(e.target.value)} />
+            <select value={txEditCategoryId} onChange={(e) => setTxEditCategoryId(e.target.value)}>
+              <option value="">Categoria</option>
+              {(txEditType === 'INCOME' ? categoriesReceitas : categoriesGastos).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <div className="modal-actions">
+              <button type="button" className="btn-save" onClick={saveEditTx}>Salvar</button>
+              <button type="button" onClick={() => { setEditModal(null); setEditingTxId(null); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 // --- Transações (3 modos: Gastos | Contas do mês | Receitas) ---
-type Category = { id: string; name: string; kind: string }
 
 function Transacoes() {
   const [txViewMode, setTxViewMode] = useState<TxViewMode>('gastos')
