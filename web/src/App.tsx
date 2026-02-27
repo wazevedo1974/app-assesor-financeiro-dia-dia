@@ -147,6 +147,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [health, setHealth] = useState<string | null>(null)
+  const [nowLabel, setNowLabel] = useState<string>('')
 
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem('assesor_token'),
@@ -237,6 +238,18 @@ function App() {
         recognitionRef.current.stop()
       }
     }
+  }, [])
+
+  useEffect(() => {
+    function updateNow() {
+      const d = new Date()
+      const date = d.toLocaleDateString('pt-BR')
+      const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      setNowLabel(`${date} • ${time}`)
+    }
+    updateNow()
+    const id = setInterval(updateNow, 60000)
+    return () => clearInterval(id)
   }, [])
 
   async function checkHealth() {
@@ -1192,6 +1205,7 @@ function App() {
             Testar conexão com API
           </button>
           {health && <p className="health">{health}</p>}
+          {nowLabel && <p className="datetime">{nowLabel}</p>}
         </div>
       </header>
 
@@ -1275,7 +1289,6 @@ function App() {
               </div>
               <div className="dashboard-header-controls">
                 <div className="month-selector">
-                  <label>Mês</label>
                   <input
                     type="month"
                     value={selectedMonth}

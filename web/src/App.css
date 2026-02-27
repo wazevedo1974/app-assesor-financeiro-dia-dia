@@ -41,6 +41,11 @@
   gap: 0.5rem;
 }
 
+.datetime {
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+
 .card {
   background: radial-gradient(circle at top left, #1f2937, #020617);
   border-radius: 1.25rem;
@@ -185,9 +190,7 @@ button:disabled {
 
 .month-selector {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 0.35rem;
 }
 
 .month-selector input[type='month'] {
