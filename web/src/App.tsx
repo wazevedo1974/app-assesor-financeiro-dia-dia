@@ -1,6 +1,7 @@
 import './App.css'
 import React, { useEffect, useRef, useState } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
+import jsPDF from 'jspdf'
 
 interface SpeechRecognitionInstance {
   start: () => void
@@ -321,6 +322,152 @@ function App() {
       )
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!token) return
+    try {
+      const { from, to } = getMonthRange(selectedMonth)
+
+      const [yearStr, monthStr] = selectedMonth.split('-')
+      const ymLabel = `${monthStr}/${yearStr}`
+
+      const [overviewRes, txRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/months/${yearStr}-${monthStr}/overview`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(
+          `${API_BASE_URL}/transactions?from=${from}&to=${to}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        ),
+      ])
+
+      if (!overviewRes.ok) {
+        setMessage('Não foi possível gerar o relatório. Tente novamente.')
+        return
+      }
+
+      const overview = (await overviewRes.json()) as {
+        totals: {
+          income: number
+          expense: number
+          balance: number
+          fixedExpenses: number
+          variableExpenses: number
+          savingsRate: number
+          fixedPct: number
+          variablePct: number
+          cashAvailableAfterOpenBills: number
+        }
+        bills: {
+          totalDue: number
+          totalPaid: number
+          totalOpen: number
+        }
+      }
+
+      const txData = txRes.ok ? ((await txRes.json()) as Transaction[]) : []
+
+      const doc = new jsPDF()
+      let y = 15
+
+      doc.setFontSize(14)
+      doc.text('Relatório financeiro familiar', 14, y)
+      y += 7
+
+      doc.setFontSize(11)
+      doc.text(`Mês: ${ymLabel}`, 14, y)
+      y += 6
+      if (userName) {
+        doc.text(`Responsável: ${userName}`, 14, y)
+        y += 6
+      }
+
+      y += 2
+      doc.setFontSize(12)
+      doc.text('Resumo do mês', 14, y)
+      y += 5
+      doc.setFontSize(10)
+
+      const fmt = (v: number) =>
+        `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+
+      doc.text(`Receitas: ${fmt(overview.totals.income)}`, 14, y)
+      y += 5
+      doc.text(`Despesas: ${fmt(overview.totals.expense)}`, 14, y)
+      y += 5
+      doc.text(`Saldo: ${fmt(overview.totals.balance)}`, 14, y)
+      y += 5
+      doc.text(
+        `Despesas fixas: ${fmt(overview.totals.fixedExpenses)} (${(
+          overview.totals.fixedPct * 100
+        ).toFixed(0)}% da renda)`,
+        14,
+        y,
+      )
+      y += 5
+      doc.text(
+        `Despesas variáveis: ${fmt(overview.totals.variableExpenses)} (${(
+          overview.totals.variablePct * 100
+        ).toFixed(0)}% da renda)`,
+        14,
+        y,
+      )
+      y += 5
+      doc.text(
+        `Taxa de poupança do mês: ${(overview.totals.savingsRate * 100).toFixed(0)}%`,
+        14,
+        y,
+      )
+      y += 5
+      doc.text(
+        `Contas previstas: ${fmt(overview.bills.totalDue)} · pagas: ${fmt(
+          overview.bills.totalPaid,
+        )} · em aberto: ${fmt(overview.bills.totalOpen)}`,
+        14,
+        y,
+      )
+      y += 8
+
+      if (txData.length > 0) {
+        doc.setFontSize(12)
+        doc.text('Transações do mês', 14, y)
+        y += 5
+        doc.setFontSize(9)
+
+        const maxLines = 25
+        const slice = txData.slice(0, maxLines)
+
+        slice.forEach((t) => {
+          if (y > 270) {
+            doc.addPage()
+            y = 15
+          }
+          const dateLabel = new Date(t.date).toLocaleDateString('pt-BR')
+          const typeLabel = t.type === 'INCOME' ? 'Receita' : 'Despesa'
+          const line = `${dateLabel} · ${typeLabel} · ${fmt(
+            t.amount,
+          )} · ${t.description || 'Sem descrição'}`
+          doc.text(line, 14, y)
+          y += 5
+        })
+
+        if (txData.length > maxLines) {
+          doc.text(
+            `(+ ${txData.length - maxLines} transações adicionais não exibidas)`,
+            14,
+            y,
+          )
+        }
+      }
+
+      doc.save(`relatorio-financeiro-${selectedMonth}.pdf`)
+    } catch (error) {
+      console.error(error)
+      setMessage('Erro ao gerar PDF. Tente novamente.')
     }
   }
 
@@ -1149,6 +1296,9 @@ function App() {
                     }}
                   />
                 </div>
+                <button type="button" className="secondary" onClick={handleExportPdf}>
+                  Exportar PDF
+                </button>
                 <button type="button" className="secondary" onClick={handleLogout}>
                   Sair
                 </button>
