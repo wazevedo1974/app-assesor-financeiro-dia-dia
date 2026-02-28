@@ -33,6 +33,11 @@ function formatDateBR(iso: string) {
   return `${d}/${m}/${y}`
 }
 
+/** Formata valor numérico em Real (padrão BR: 1.234,56) */
+function formatBRL(value: number): string {
+  return value.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+}
+
 // --- Login ---
 function Login({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('')
@@ -227,34 +232,34 @@ function Resumo() {
       <div className="cards">
         <div className="card">
           <span className="label">Receitas</span>
-          <span className="value income">R$ {summary ? summary.totalIncome.toFixed(2) : '0,00'}</span>
+          <span className="value income">R$ {formatBRL(summary?.totalIncome ?? 0)}</span>
         </div>
         <div className="card">
           <span className="label">Despesas realizadas</span>
-          <span className="value expense">R$ {summary ? summary.totalExpense.toFixed(2) : '0,00'}</span>
+          <span className="value expense">R$ {formatBRL(summary?.totalExpense ?? 0)}</span>
         </div>
         <div className="card">
           <span className="label">Saldo</span>
           <span className={`value ${summary && summary.balance >= 0 ? 'income' : 'expense'}`}>
-            R$ {summary ? summary.balance.toFixed(2) : '0,00'}
+            R$ {formatBRL(summary?.balance ?? 0)}
           </span>
         </div>
       </div>
 
-      <p className="line-total">Contas a pagar: <span className="expense">R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</span></p>
+      <p className="line-total">Contas a pagar: <span className="expense">R$ {formatBRL(openBills.reduce((a, b) => a + b.amount, 0))}</span></p>
       <button type="button" className="link-btn" onClick={async () => { if (window.confirm(`Limpar todas as transações de ${formatMonthLabel(selectedMonth)}?`)) { try { await api.deleteTransactionsInPeriod(from, to); await load(); } catch (e) { console.error(e); } } }}>Limpar transações do mês</button>
 
       {(overviewFilter === 'tudo' || overviewFilter === 'contas') && openBills.length > 0 && (
         <section className="section">
           <h3>Contas a pagar</h3>
           <div className="card">
-            <p className="label">Total: R$ {openBills.reduce((a, b) => a + b.amount, 0).toFixed(2)}</p>
+            <p className="label">Total: R$ {formatBRL(openBills.reduce((a, b) => a + b.amount, 0))}</p>
             <ul className="bill-list tx-list-slim">
               {filteredBills.map((b) => (
                 <li key={b.id}>
                   <span>{b.description} — vence {formatDateBR(b.dueDate)}</span>
                   <span className="row-right">
-                    <span className="expense">R$ {b.amount.toFixed(2)}</span>
+                    <span className="expense">R$ {formatBRL(b.amount)}</span>
                     <div className="menu-wrap">
                       <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === b.id ? null : b.id)} aria-label="Ações">⋮</button>
                       {menuOpenId === b.id && (
@@ -285,7 +290,7 @@ function Resumo() {
                 <span>{formatDateBR(t.date)} {t.description || '-'}</span>
                 <span className="row-right">
                   <span className={t.type === 'INCOME' ? 'income' : 'expense'}>
-                    {t.type === 'INCOME' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                    {t.type === 'INCOME' ? '+' : '-'} R$ {formatBRL(t.amount)}
                   </span>
                   <div className="menu-wrap">
                     <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)} aria-label="Ações">⋮</button>
@@ -330,7 +335,7 @@ function Resumo() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Editar conta</h3>
             <input placeholder="Descrição" value={cEditDesc} onChange={(e) => setCEditDesc(e.target.value)} />
-            <input placeholder="Valor" value={cEditAmount} onChange={(e) => setCEditAmount(e.target.value)} />
+            <input placeholder="Valor (R$) — ex: 100,50" value={cEditAmount} onChange={(e) => setCEditAmount(e.target.value)} />
             <input type="date" value={cEditDueDate} onChange={(e) => setCEditDueDate(e.target.value)} />
             <select value={cEditCategoryId} onChange={(e) => setCEditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <label className="checkbox-label"><input type="checkbox" checked={cEditRecurring} onChange={(e) => setCEditRecurring(e.target.checked)} /> Repetir todo mês</label>
@@ -346,7 +351,7 @@ function Resumo() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{txEditType === 'INCOME' ? 'Editar receita' : 'Editar gasto'}</h3>
             <input placeholder="Descrição" value={txEditDesc} onChange={(e) => setTxEditDesc(e.target.value)} />
-            <input placeholder="Valor" value={txEditAmount} onChange={(e) => setTxEditAmount(e.target.value)} />
+            <input placeholder="Valor (R$) — ex: 100,50" value={txEditAmount} onChange={(e) => setTxEditAmount(e.target.value)} />
             <input type="date" value={txEditDate} onChange={(e) => setTxEditDate(e.target.value)} />
             <select value={txEditCategoryId} onChange={(e) => setTxEditCategoryId(e.target.value)}>
               <option value="">Categoria</option>
@@ -652,7 +657,7 @@ function Transacoes() {
         <>
           <form onSubmit={handleAddGasto} className="form-block form-compact">
             <input placeholder="Descrição" value={gDesc} onChange={(e) => setGDesc(e.target.value)} />
-            <input placeholder="Valor" type="text" inputMode="decimal" value={gAmount} onChange={(e) => setGAmount(e.target.value)} required />
+            <input placeholder="Valor (R$) — ex: 100,50" type="text" inputMode="decimal" value={gAmount} onChange={(e) => setGAmount(e.target.value)} required />
             <input type="date" value={gDate} onChange={(e) => setGDate(e.target.value)} />
             <select value={gCategoryId} onChange={(e) => setGCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesGastos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <button type="submit" disabled={gSending}>{gSending ? '...' : '+'}</button>
@@ -662,7 +667,7 @@ function Transacoes() {
               <li key={t.id}>
                 <span>{formatDateBR(t.date)} {t.description || '-'}</span>
                 <span className="row-right">
-                  <span className="expense">R$ {t.amount.toFixed(2)}</span>
+                  <span className="expense">R$ {formatBRL(t.amount)}</span>
                   <div className="menu-wrap">
                     <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)} aria-label="Ações">⋮</button>
                     {menuOpenId === t.id && (
@@ -687,7 +692,7 @@ function Transacoes() {
         <>
           <form onSubmit={handleAddConta} className="form-block form-compact">
             <input placeholder="Descrição" value={cDesc} onChange={(e) => setCDesc(e.target.value)} required />
-            <input placeholder="Valor" type="text" inputMode="decimal" value={cAmount} onChange={(e) => setCAmount(e.target.value)} required />
+            <input placeholder="Valor (R$) — ex: 100,50" type="text" inputMode="decimal" value={cAmount} onChange={(e) => setCAmount(e.target.value)} required />
             <input type="date" value={cDueDate} onChange={(e) => setCDueDate(e.target.value)} required />
             <select value={cCategoryId} onChange={(e) => setCCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <label className="checkbox-label"><input type="checkbox" checked={cRecurring} onChange={(e) => setCRecurring(e.target.checked)} /> Repetir</label>
@@ -698,7 +703,7 @@ function Transacoes() {
               <li key={b.id}>
                 <span>{b.description} — {formatDateBR(b.dueDate)}</span>
                 <span className="row-right">
-                  <span className="expense">R$ {b.amount.toFixed(2)}</span>
+                  <span className="expense">R$ {formatBRL(b.amount)}</span>
                   <div className="menu-wrap">
                     <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === b.id ? null : b.id)} aria-label="Ações">⋮</button>
                     {menuOpenId === b.id && (
@@ -724,7 +729,7 @@ function Transacoes() {
         <>
           <form onSubmit={handleAddReceita} className="form-block form-compact">
             <input placeholder="Descrição" value={rDesc} onChange={(e) => setRDesc(e.target.value)} />
-            <input placeholder="Valor" type="text" inputMode="decimal" value={rAmount} onChange={(e) => setRAmount(e.target.value)} required />
+            <input placeholder="Valor (R$) — ex: 100,50" type="text" inputMode="decimal" value={rAmount} onChange={(e) => setRAmount(e.target.value)} required />
             <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value)} />
             <select value={rCategoryId} onChange={(e) => setRCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesReceitas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <button type="submit" disabled={rSending}>{rSending ? '...' : '+'}</button>
@@ -734,7 +739,7 @@ function Transacoes() {
               <li key={t.id}>
                 <span>{formatDateBR(t.date)} {t.description || '-'}</span>
                 <span className="row-right">
-                  <span className="income">R$ {t.amount.toFixed(2)}</span>
+                  <span className="income">R$ {formatBRL(t.amount)}</span>
                   <div className="menu-wrap">
                     <button type="button" className="btn-menu" onClick={() => setMenuOpenId(menuOpenId === t.id ? null : t.id)} aria-label="Ações">⋮</button>
                     {menuOpenId === t.id && (
@@ -760,7 +765,7 @@ function Transacoes() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Editar gasto</h3>
             <input placeholder="Descrição" value={gEditDesc} onChange={(e) => setGEditDesc(e.target.value)} />
-            <input placeholder="Valor" value={gEditAmount} onChange={(e) => setGEditAmount(e.target.value)} />
+            <input placeholder="Valor (R$) — ex: 100,50" value={gEditAmount} onChange={(e) => setGEditAmount(e.target.value)} />
             <input type="date" value={gEditDate} onChange={(e) => setGEditDate(e.target.value)} />
             <select value={gEditCategoryId} onChange={(e) => setGEditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesGastos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <div className="modal-actions">
@@ -775,7 +780,7 @@ function Transacoes() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Editar conta</h3>
             <input placeholder="Descrição" value={cEditDesc} onChange={(e) => setCEditDesc(e.target.value)} />
-            <input placeholder="Valor" value={cEditAmount} onChange={(e) => setCEditAmount(e.target.value)} />
+            <input placeholder="Valor (R$) — ex: 100,50" value={cEditAmount} onChange={(e) => setCEditAmount(e.target.value)} />
             <input type="date" value={cEditDueDate} onChange={(e) => setCEditDueDate(e.target.value)} />
             <select value={cEditCategoryId} onChange={(e) => setCEditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesContas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <label className="checkbox-label"><input type="checkbox" checked={cEditRecurring} onChange={(e) => setCEditRecurring(e.target.checked)} /> Repetir todo mês</label>
@@ -791,7 +796,7 @@ function Transacoes() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Editar receita</h3>
             <input placeholder="Descrição" value={rEditDesc} onChange={(e) => setREditDesc(e.target.value)} />
-            <input placeholder="Valor" value={rEditAmount} onChange={(e) => setREditAmount(e.target.value)} />
+            <input placeholder="Valor (R$) — ex: 100,50" value={rEditAmount} onChange={(e) => setREditAmount(e.target.value)} />
             <input type="date" value={rEditDate} onChange={(e) => setREditDate(e.target.value)} />
             <select value={rEditCategoryId} onChange={(e) => setREditCategoryId(e.target.value)}><option value="">Categoria</option>{categoriesReceitas.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <div className="modal-actions">
