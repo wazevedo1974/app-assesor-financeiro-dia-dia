@@ -91,8 +91,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
 // --- Resumo (seletor de mês + filtros Tudo/Gastos/Contas/Receitas) ---
 type Category = { id: string; name: string; kind: string }
 
-function Resumo() {
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
+function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; setSelectedMonth: (m: string) => void }) {
   const [overviewFilter, setOverviewFilter] = useState<OverviewFilter>('tudo')
   const [summary, setSummary] = useState<{ totalIncome: number; totalExpense: number; balance: number } | null>(null)
   const [openBills, setOpenBills] = useState<{ id: string; description: string; amount: number; dueDate: string; categoryId?: string | null; recurrence?: string }[]>([])
@@ -391,9 +390,8 @@ function Resumo() {
 
 // --- Transações (3 modos: Gastos | Contas do mês | Receitas) ---
 
-function Transacoes() {
+function Transacoes({ selectedMonth, setSelectedMonth }: { selectedMonth: string; setSelectedMonth: (m: string) => void }) {
   const [txViewMode, setTxViewMode] = useState<TxViewMode>('gastos')
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -923,6 +921,7 @@ function Categorias() {
 function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
   const [tab, setTab] = useState<MainTab>('resumo')
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
   const [isListening, setIsListening] = useState(false)
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null)
   const [voiceError, setVoiceError] = useState<string | null>(null)
@@ -990,7 +989,7 @@ function App() {
   }, [isListening])
 
   const handleExportPdf = useCallback(async () => {
-    const ym = getCurrentMonth()
+    const ym = selectedMonth
     const { from, to } = getMonthBounds(ym)
     setPdfLoading(true)
     try {
@@ -1019,10 +1018,10 @@ function App() {
     } finally {
       setPdfLoading(false)
     }
-  }, [])
+  }, [selectedMonth])
 
   const handleShareReport = useCallback(async () => {
-    const ym = getCurrentMonth()
+    const ym = selectedMonth
     const { from, to } = getMonthBounds(ym)
     setPdfLoading(true)
     try {
@@ -1056,7 +1055,7 @@ function App() {
     } finally {
       setPdfLoading(false)
     }
-  }, [])
+  }, [selectedMonth])
 
   function handleLogin() {
     setToken(localStorage.getItem('token'))
@@ -1098,8 +1097,8 @@ function App() {
         <button type="button" className={tab === 'transacoes' ? 'active' : ''} onClick={() => setTab('transacoes')}>Transações</button>
         <button type="button" className={tab === 'categorias' ? 'active' : ''} onClick={() => setTab('categorias')}>Categorias</button>
       </nav>
-      {tab === 'resumo' && <Resumo />}
-      {tab === 'transacoes' && <Transacoes />}
+      {tab === 'resumo' && <Resumo selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />}
+      {tab === 'transacoes' && <Transacoes selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />}
       {tab === 'categorias' && <Categorias />}
     </div>
   )
