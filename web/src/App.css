@@ -24,12 +24,62 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   padding: 1rem 0;
   border-bottom: 1px solid #334155;
 }
 .header h1 {
   margin: 0;
   font-size: 1.25rem;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.btn-voice,
+.btn-export,
+.btn-share {
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.btn-voice:hover,
+.btn-export:hover,
+.btn-share:hover {
+  background: #334155;
+  border-color: #64748b;
+}
+.btn-voice:disabled,
+.btn-export:disabled,
+.btn-share:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn-voice {
+  background: #1e3a5f;
+  border-color: #3b82f6;
+}
+.btn-voice:hover:not(:disabled) {
+  background: #2563eb;
+}
+.voice-feedback {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: #1e3a5f;
+  color: #e2e8f0;
+  border-radius: 6px;
+  margin: 0 0 0.5rem;
+}
+.voice-feedback.error {
+  background: #7f1d1d;
+  color: #fecaca;
 }
 .logout {
   background: transparent;
@@ -563,6 +613,17 @@ body {
   }
   .header h1 {
     font-size: 1.1rem;
+  }
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .btn-voice,
+  .btn-export,
+  .btn-share {
+    min-height: 44px;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.75rem;
   }
   .tabs {
     padding: 0.75rem 0;

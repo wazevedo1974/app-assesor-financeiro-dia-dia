@@ -1,6 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { api, setAuthToken } from './api'
+import { parseVoiceText, suggestCategoryId } from './voiceUtils'
+import { generateReportPdf } from './pdfReport'
 import './App.css'
+
+interface SpeechRecognitionInstance {
+  start: () => void
+  stop: () => void
+  lang: string
+  continuous: boolean
+  onresult: ((e: unknown) => void) | null
+  onend: (() => void) | null
+  onerror: ((e: { error: string }) => void) | null
+}
+const SpeechRecognitionCtor = typeof window !== 'undefined' && (
+  (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionInstance }).SpeechRecognition ||
+  (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionInstance }).webkitSpeechRecognition
+)
 
 type MainTab = 'resumo' | 'transacoes' | 'categorias'
 type OverviewFilter = 'tudo' | 'gastos' | 'contas' | 'receitas'
@@ -127,6 +143,11 @@ function Resumo() {
   }
 
   useEffect(() => { load() }, [selectedMonth])
+  useEffect(() => {
+    const onRefresh = () => load()
+    window.addEventListener('assessor:refresh', onRefresh)
+    return () => window.removeEventListener('assessor:refresh', onRefresh)
+  }, [selectedMonth])
 
   function openEditBill(b: { id: string; description: string; amount: number; dueDate: string; categoryId?: string | null; recurrence?: string }) {
     setEditingBillId(b.id)
@@ -480,6 +501,11 @@ function Transacoes() {
     if (txViewMode === 'gastos') loadGastos()
     else if (txViewMode === 'contas') loadBills()
     else loadReceitas()
+  }, [txViewMode, selectedMonth])
+  useEffect(() => {
+    const onRefresh = () => { loadGastos(); loadBills(); loadReceitas() }
+    window.addEventListener('assessor:refresh', onRefresh)
+    return () => window.removeEventListener('assessor:refresh', onRefresh)
   }, [txViewMode, selectedMonth])
 
   async function handleAddGasto(e: React.FormEvent) {
@@ -897,6 +923,140 @@ function Categorias() {
 function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
   const [tab, setTab] = useState<MainTab>('resumo')
+  const [isListening, setIsListening] = useState(false)
+  const [voiceMessage, setVoiceMessage] = useState<string | null>(null)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+
+  const handleVoiceClick = useCallback(async () => {
+    if (!SpeechRecognitionCtor) {
+      setVoiceError('Reconhecimento de voz não disponível neste navegador. Use Chrome ou Edge.')
+      return
+    }
+    if (isListening) {
+      recognitionRef.current?.stop()
+      recognitionRef.current = null
+      setIsListening(false)
+      return
+    }
+    setVoiceError(null)
+    setVoiceMessage(null)
+    const rec = new SpeechRecognitionCtor()
+    rec.lang = 'pt-BR'
+    rec.continuous = false
+    rec.onresult = async (e: unknown) => {
+      const ev = e as { results: ArrayLike<{ transcript: string }> }
+      const first = ev.results?.[0]
+      const transcript = first?.transcript ?? ''
+      rec.stop()
+      recognitionRef.current = null
+      setIsListening(false)
+      const parsed = parseVoiceText(transcript)
+      if (!parsed) {
+        setVoiceMessage('Não entendi o valor. Tente: "Abasteci 50 reais" ou "30 no mercado".')
+        return
+      }
+      try {
+        const categories = await api.listCategories()
+        const categoryId = suggestCategoryId(transcript, categories) || suggestCategoryId(parsed.description, categories)
+        await api.createTransaction({
+          amount: parsed.amount,
+          type: parsed.type,
+          description: parsed.description || undefined,
+          categoryId: categoryId || undefined,
+          date: new Date().toISOString().slice(0, 10),
+        })
+        const label = parsed.type === 'INCOME' ? 'Receita' : 'Despesa'
+        setVoiceMessage(`${label} de R$ ${formatBRL(parsed.amount)} registrada. Veja em Transações.`)
+        window.dispatchEvent(new Event('assessor:refresh'))
+      } catch (err) {
+        setVoiceError(err instanceof Error ? err.message : 'Erro ao registrar.')
+      }
+    }
+    rec.onend = () => {
+      recognitionRef.current = null
+      setIsListening(false)
+    }
+    rec.onerror = (e: { error: string }) => {
+      recognitionRef.current = null
+      setIsListening(false)
+      if (e.error !== 'aborted') setVoiceError('Erro no microfone. Tente de novo.')
+    }
+    recognitionRef.current = rec
+    setIsListening(true)
+    setVoiceMessage('Fale agora: ex. "Abasteci 50 reais"...')
+    rec.start()
+  }, [isListening])
+
+  const handleExportPdf = useCallback(async () => {
+    const ym = getCurrentMonth()
+    const { from, to } = getMonthBounds(ym)
+    setPdfLoading(true)
+    try {
+      const [summary, catSummary, transactions, bills] = await Promise.all([
+        api.getSummary(from, to),
+        api.getCategorySummary(from, to),
+        api.listTransactions(from, to),
+        api.listBills('open', from, to),
+      ])
+      const data = {
+        monthLabel: formatMonthLabel(ym),
+        summary,
+        byKind: catSummary.byKind,
+        transactions,
+        openBills: bills.map((b) => ({ description: b.description, amount: b.amount, dueDate: b.dueDate })),
+      }
+      const blob = generateReportPdf(data)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `relatorio-financeiro-${ym}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setPdfLoading(false)
+    }
+  }, [])
+
+  const handleShareReport = useCallback(async () => {
+    const ym = getCurrentMonth()
+    const { from, to } = getMonthBounds(ym)
+    setPdfLoading(true)
+    try {
+      const [summary, catSummary, transactions, bills] = await Promise.all([
+        api.getSummary(from, to),
+        api.getCategorySummary(from, to),
+        api.listTransactions(from, to),
+        api.listBills('open', from, to),
+      ])
+      const data = {
+        monthLabel: formatMonthLabel(ym),
+        summary,
+        byKind: catSummary.byKind,
+        transactions,
+        openBills: bills.map((b) => ({ description: b.description, amount: b.amount, dueDate: b.dueDate })),
+      }
+      const blob = generateReportPdf(data)
+      const file = new File([blob], `relatorio-financeiro-${ym}.pdf`, { type: 'application/pdf' })
+      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ title: 'Relatório financeiro', files: [file] })
+      } else {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `relatorio-financeiro-${ym}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') console.error(err)
+    } finally {
+      setPdfLoading(false)
+    }
+  }, [])
 
   function handleLogin() {
     setToken(localStorage.getItem('token'))
@@ -915,8 +1075,24 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>Assessor Financeiro</h1>
-        <button type="button" className="logout" onClick={handleLogout}>Sair</button>
+        <div className="header-actions">
+          <button type="button" className="btn-voice" onClick={handleVoiceClick} title="Registrar por voz" aria-label={isListening ? 'Parar gravação' : 'Registrar por voz'}>
+            {isListening ? '🎤 Parar' : '🎤 Voz'}
+          </button>
+          <button type="button" className="btn-export" onClick={handleExportPdf} disabled={pdfLoading} title="Baixar PDF do mês">
+            {pdfLoading ? '...' : 'Exportar PDF'}
+          </button>
+          <button type="button" className="btn-share" onClick={handleShareReport} disabled={pdfLoading} title="Compartilhar relatório (ex.: com sua esposa)">
+            Compartilhar
+          </button>
+          <button type="button" className="logout" onClick={handleLogout}>Sair</button>
+        </div>
       </header>
+      {(voiceMessage || voiceError) && (
+        <div className={`voice-feedback ${voiceError ? 'error' : ''}`} role="alert">
+          {voiceError || voiceMessage}
+        </div>
+      )}
       <nav className="tabs main-tabs">
         <button type="button" className={tab === 'resumo' ? 'active' : ''} onClick={() => setTab('resumo')}>Resumo</button>
         <button type="button" className={tab === 'transacoes' ? 'active' : ''} onClick={() => setTab('transacoes')}>Transações</button>
