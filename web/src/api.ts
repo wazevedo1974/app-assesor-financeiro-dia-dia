@@ -58,6 +58,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const text = await res.text();
+    const lower = text.trimStart().slice(0, 500).toLowerCase();
+    if (lower.startsWith('<!doctype') || lower.includes('<html')) {
+      throw new Error(
+        'VITE_API_URL parece apontar para o site (frontend), não para a API. No Railway, use o domínio do serviço **backend** (Node). Confira: abra no navegador https://SUA-URL/health — deve aparecer só o JSON {"status":"ok"}.'
+      );
+    }
     throw new Error(parseErrorMessage(text));
   }
   if (res.status === 204) return undefined as T;

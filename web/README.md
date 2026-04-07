@@ -39,8 +39,14 @@ Abra `http://localhost:5174` (porta 5174 para não conflitar com outros apps na 
 6. Gere o domínio público do serviço e acesse a URL do **frontend** (não a do backend).
 7. O backend deve estar no ar com CORS permitindo o front (o app já usa `cors()` aberto).
 
+### Qual URL colocar em `VITE_API_URL`?
+
+- Deve ser a do **serviço da API** (Node/Express no Railway), **não** a do front (Vite/React).
+- **Como conferir:** abra `https://SUA-URL/health` no navegador. Resposta correta: `{"status":"ok"}` em JSON. Se aparecer a **página do app** (HTML), essa URL é do **frontend** — está errada para `VITE_API_URL`.
+
 ### Troubleshooting
 
+- **404 em `/auth/register` ou “Erro na requisição” com HTML:** quase sempre `VITE_API_URL` aponta para o deploy do **site** em vez do **backend**. Corrija o `.env` com a URL do serviço backend e reinicie o `npm run dev`.
 - **Login falha / “Não foi possível conectar ao servidor”:** confira `VITE_API_URL` e faça um **novo deploy** após alterar a variável (o build precisa ser refeito).
 - **Host bloqueado:** o [vite.config.ts](vite.config.ts) permite `.railway.app` em `preview`.
 
