@@ -15,7 +15,7 @@ Defina a URL do backend (Railway ou `http://localhost:3333`):
 VITE_API_URL=https://seu-backend.up.railway.app npm run dev
 ```
 
-Abra `http://localhost:5173`. Na primeira vez use **Criar conta**; depois **Entrar**.
+Abra `http://localhost:5174` (porta 5174 para não conflitar com outros apps na 5173). Na primeira vez use **Criar conta**; depois **Entrar**.
 
 ## Deploy na Railway (frontend)
 
