@@ -1,8 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from 'recharts'
 import { api, setAuthToken } from './api'
 import { parseVoiceText, suggestCategoryId } from './voiceUtils'
 import { generateReportPdf } from './pdfReport'
 import './App.css'
+
+const CHART_COLORS_PIE = ['#3b82f6', '#f97316']
+const tooltipDark = { background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }
 
 interface SpeechRecognitionInstance {
   start: () => void
@@ -84,6 +99,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="auth-screen">
       <h1>Assessor Financeiro</h1>
+      <p className="auth-tagline">Seu mês em um só lugar: receitas, gastos e contas — com clareza.</p>
       <form onSubmit={handleSubmit} className="auth-form">
         {mode === 'register' && (
           <input type="text" placeholder="Seu nome (opcional)" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
@@ -120,6 +136,10 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
   const [transactions, setTransactions] = useState<{ id: string; amount: number; type: string; description?: string | null; date: string; categoryId?: string | null }[]>([])
   const [advices, setAdvices] = useState<{ id: string; severity: string; title: string; message: string }[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [categorySummary, setCategorySummary] = useState<{
+    categories: { id: string; name: string; kind: string; income: number; expense: number }[]
+    byKind: { fixed: number; variable: number; income: number }
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [editModal, setEditModal] = useState<'conta'|'tx'|null>(null)
@@ -144,18 +164,20 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
   async function load() {
     setLoading(true)
     try {
-      const [sum, bills, txs, advice, cats] = await Promise.all([
+      const [sum, bills, txs, advice, cats, catSum] = await Promise.all([
         api.getSummary(from, to),
         api.listBills('open', from, to),
         api.listTransactions(from, to),
         api.getFinancialAdvice(),
         api.listCategories(),
+        api.getCategorySummary(from, to),
       ])
       setSummary(sum)
       setOpenBills(bills)
       setTransactions(txs)
       setAdvices(advice.advices || [])
       setCategories(cats)
+      setCategorySummary(catSum)
     } catch (err) {
       console.error(err)
     } finally {
@@ -248,7 +270,33 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
         ? transactions.filter((t) => t.type === 'INCOME')
         : []
 
-  if (loading) return <div className="screen"><p>Carregando...</p></div>
+  const totalExpenseSplit =
+    categorySummary ? categorySummary.byKind.fixed + categorySummary.byKind.variable : 0
+  const pieExpenseData =
+    categorySummary && totalExpenseSplit > 0
+      ? [
+          { name: 'Despesas fixas', value: categorySummary.byKind.fixed },
+          { name: 'Despesas variáveis', value: categorySummary.byKind.variable },
+        ].filter((d) => d.value > 0)
+      : []
+  const topExpenseByCategory =
+    categorySummary?.categories
+      .filter((c) => c.expense > 0)
+      .sort((a, b) => b.expense - a.expense)
+      .slice(0, 8)
+      .map((c) => ({
+        name: c.name.length > 18 ? `${c.name.slice(0, 18)}…` : c.name,
+        total: c.expense,
+      })) ?? []
+
+  if (loading) {
+    return (
+      <div className="screen loading-screen">
+        <div className="loading-spinner" aria-hidden />
+        <p>Carregando seu resumo…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="screen">
@@ -287,6 +335,73 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
           </span>
         </div>
       </div>
+
+      {categorySummary && totalExpenseSplit > 0 && pieExpenseData.length > 0 && (
+        <section className="section chart-section">
+          <h3>Onde foi seu dinheiro</h3>
+          <p className="chart-hint">Despesas do mês: fixas e variáveis, e principais categorias.</p>
+          <div className="chart-grid">
+            <div className="card chart-card">
+              <span className="label">Fixo × variável</span>
+              <div className="chart-wrap">
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={pieExpenseData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={52}
+                      outerRadius={80}
+                      paddingAngle={2}
+                    >
+                      {pieExpenseData.map((d, i) => (
+                        <Cell key={d.name} fill={CHART_COLORS_PIE[i % CHART_COLORS_PIE.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={tooltipDark}
+                      formatter={(value) => [`R$ ${formatBRL(Number(value ?? 0))}`, '']}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <ul className="chart-legend-inline">
+                {pieExpenseData.map((d, i) => (
+                  <li key={d.name}>
+                    <span className="dot" style={{ background: CHART_COLORS_PIE[i % CHART_COLORS_PIE.length] }} />
+                    {d.name}: R$ {formatBRL(d.value)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {topExpenseByCategory.length > 0 && (
+              <div className="card chart-card">
+                <span className="label">Maiores gastos por categoria</span>
+                <div className="chart-wrap chart-wrap-tall">
+                  <ResponsiveContainer width="100%" height={Math.min(320, 48 + topExpenseByCategory.length * 36)}>
+                    <BarChart
+                      layout="vertical"
+                      data={topExpenseByCategory}
+                      margin={{ left: 4, right: 12, top: 8, bottom: 8 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                      <XAxis type="number" stroke="#64748b" tick={{ fontSize: 11 }} tickFormatter={(v) => formatBRL(Number(v))} />
+                      <YAxis type="category" dataKey="name" stroke="#94a3b8" width={108} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={tooltipDark}
+                        formatter={(v) => [`R$ ${formatBRL(Number(v ?? 0))}`, 'Gasto']}
+                      />
+                      <Bar dataKey="total" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <p className="line-total">Contas a pagar: <span className="expense">R$ {formatBRL(openBills.reduce((a, b) => a + b.amount, 0))}</span></p>
       <button type="button" className="link-btn" onClick={async () => { if (window.confirm(`Limpar todas as transações de ${formatMonthLabel(selectedMonth)}?`)) { try { await api.deleteTransactionsInPeriod(from, to); await load(); } catch (e) { console.error(e); } } }}>Limpar transações do mês</button>
@@ -354,7 +469,10 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
       )}
 
       {overviewFilter === 'tudo' && filteredTx.length === 0 && openBills.length === 0 && (
-        <p className="muted">Nenhuma movimentação nem conta a pagar neste mês.</p>
+        <div className="empty-state">
+          <p className="empty-state-title">Nada neste mês ainda</p>
+          <p className="muted">Registre receitas e gastos na aba <strong>Transações</strong>, ou contas a pagar no modo <strong>Contas do mês</strong>. Em poucos lançamentos o resumo e os gráficos ganham vida.</p>
+        </div>
       )}
       {overviewFilter === 'gastos' && filteredTx.length === 0 && <p className="muted">Nenhum gasto neste mês.</p>}
       {overviewFilter === 'contas' && openBills.length === 0 && <p className="muted">Nenhuma conta a pagar neste mês.</p>}

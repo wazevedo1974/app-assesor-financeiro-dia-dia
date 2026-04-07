@@ -11,7 +11,7 @@ body {
 
 #root {
   min-height: 100vh;
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
   padding: 0 1rem 2rem;
 }
@@ -238,6 +238,92 @@ body {
 }
 .section {
   margin-top: 1.5rem;
+}
+
+.chart-section h3 {
+  margin-top: 0.5rem;
+}
+.chart-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 560px) {
+  .chart-grid {
+    grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.4fr);
+    align-items: stretch;
+  }
+}
+.chart-card {
+  min-height: 0;
+}
+.chart-wrap {
+  width: 100%;
+  min-height: 220px;
+}
+.chart-wrap-tall {
+  min-height: 200px;
+}
+.chart-legend-inline {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+.chart-legend-inline li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+.chart-legend-inline .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 42vh;
+  gap: 1rem;
+  color: #94a3b8;
+}
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #334155;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin-loader 0.75s linear infinite;
+}
+@keyframes spin-loader {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.empty-state {
+  margin-top: 1.25rem;
+  padding: 1.25rem 1rem;
+  background: #1e293b;
+  border-radius: 12px;
+  border: 1px dashed #475569;
+}
+.empty-state-title {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-size: 1rem;
 }
 
 .cards {
@@ -566,8 +652,16 @@ body {
   padding: 2rem;
 }
 .auth-screen h1 {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
   font-size: 1.5rem;
+}
+.auth-tagline {
+  margin: 0 0 1.25rem;
+  font-size: 0.95rem;
+  color: #94a3b8;
+  line-height: 1.45;
+  max-width: 22rem;
+  text-align: center;
 }
 .auth-form {
   display: flex;
