@@ -56,8 +56,10 @@ function formatBRL(value: number): string {
 
 // --- Login ---
 function Login({ onLogin }: { onLogin: () => void }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -66,10 +68,14 @@ function Login({ onLogin }: { onLogin: () => void }) {
     setError('')
     setLoading(true)
     try {
-      await api.login(email, password)
+      if (mode === 'register') {
+        await api.register(email, password, name.trim() || undefined)
+      } else {
+        await api.login(email, password)
+      }
       onLogin()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao entrar.')
+      setError(err instanceof Error ? err.message : mode === 'register' ? 'Erro ao criar conta.' : 'Erro ao entrar.')
     } finally {
       setLoading(false)
     }
@@ -79,10 +85,26 @@ function Login({ onLogin }: { onLogin: () => void }) {
     <div className="auth-screen">
       <h1>Assessor Financeiro</h1>
       <form onSubmit={handleSubmit} className="auth-form">
-        <input type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        {mode === 'register' && (
+          <input type="text" placeholder="Seu nome (opcional)" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+        )}
+        <input type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+        <input
+          type="password"
+          placeholder="Senha"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={6}
+          autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+        />
         {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={loading}>{loading ? 'Entrando...' : 'Entrar'}</button>
+        <button type="submit" disabled={loading}>
+          {loading ? (mode === 'register' ? 'Criando...' : 'Entrando...') : mode === 'register' ? 'Criar conta' : 'Entrar'}
+        </button>
+        <button type="button" className="link-btn auth-toggle" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}>
+          {mode === 'login' ? 'Não tem conta? Criar conta' : 'Já tenho conta — Entrar'}
+        </button>
       </form>
     </div>
   )

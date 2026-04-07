@@ -1,89 +1,44 @@
-# Assessor Financeiro (Web)
+# Assessor Financeiro — Web (Vite + React)
 
-## Deploy (Railway)
+Frontend do app: Resumo, Transações, Categorias, voz, exportação PDF e compartilhamento.
 
-Para o login e a API funcionarem, o **frontend** precisa saber a URL do **backend**:
+## Desenvolvimento local
 
-1. No Railway, abra o **serviço do backend** e copie a URL pública (ex.: `https://seu-backend.up.railway.app`).
-2. No **serviço do frontend**, em **Variables**, crie:
-   - **Nome:** `VITE_API_URL`
-   - **Valor:** a URL do backend **sem barra no final** (ex.: `https://seu-backend.up.railway.app`)
-3. Faça um novo deploy do frontend para a variável ser aplicada no build.
-
-Se `VITE_API_URL` estiver vazia ou apontar para um host inexistente, o login mostrará erro de conexão ("Failed to fetch" / "Não foi possível conectar ao servidor").
-
----
-
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd web
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Defina a URL do backend (Railway ou `http://localhost:3333`):
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+VITE_API_URL=https://seu-backend.up.railway.app npm run dev
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Abra `http://localhost:5173`. Na primeira vez use **Criar conta**; depois **Entrar**.
+
+## Deploy na Railway (frontend)
+
+1. No **mesmo projeto** do GitHub ou um novo, **Add service** → **GitHub** → selecione este repositório.
+2. **Configure o serviço:**
+   - **Root Directory:** `web` (obrigatório).
+3. **Variáveis de ambiente** (antes do build):
+   - `VITE_API_URL` = URL pública do **backend**, **sem barra no final**  
+     Exemplo: `https://seu-backend.up.railway.app`  
+   O Vite injeta `VITE_API_URL` no JavaScript **no momento do `npm run build`**; não basta configurar só em runtime.
+4. **Build:** `npm install && npm run build` (padrão Nixpacks, se detectar Node).
+5. **Start command:** `npm start` (usa `vite preview` com `PORT` e host `0.0.0.0`).
+6. Gere o domínio público do serviço e acesse a URL do **frontend** (não a do backend).
+7. O backend deve estar no ar com CORS permitindo o front (o app já usa `cors()` aberto).
+
+### Troubleshooting
+
+- **Login falha / “Não foi possível conectar ao servidor”:** confira `VITE_API_URL` e faça um **novo deploy** após alterar a variável (o build precisa ser refeito).
+- **Host bloqueado:** o [vite.config.ts](vite.config.ts) permite `.railway.app` em `preview`.
+
+## Build de produção (teste local)
+
+```bash
+VITE_API_URL=https://seu-backend.up.railway.app npm run build
+npm start
 ```

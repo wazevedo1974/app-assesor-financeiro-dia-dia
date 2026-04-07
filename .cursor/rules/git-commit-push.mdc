@@ -1,0 +1,14 @@
+---
+description: Após alterações de código, fazer commit e push sem perguntar
+alwaysApply: true
+---
+
+# Git: commit e push após alterações
+
+Quando concluir alterações de código neste repositório (não apenas para tarefas triviais de uma linha):
+
+1. Execute `git add` nos arquivos relevantes.
+2. Faça `git commit` com mensagem clara em português.
+3. Execute `git push` para a branch atual (ex.: `main`).
+
+Não peça confirmação para commit ou push, salvo se houver falha de rede, conflito de merge ou erro de git que exija intervenção humana.
