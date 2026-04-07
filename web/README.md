@@ -9,13 +9,21 @@ cd web
 npm install
 ```
 
-Defina a URL do backend (Railway ou `http://localhost:3333`):
+**Recomendado:** copie o exemplo de variáveis e suba o backend local (`cd backend && npm run dev`, porta **3333**):
+
+```bash
+cp .env.example .env
+# Edite .env se o backend não for localhost:3333
+npm run dev
+```
+
+Ou em uma linha (sem arquivo `.env`):
 
 ```bash
 VITE_API_URL=https://seu-backend.up.railway.app npm run dev
 ```
 
-Abra `http://localhost:5174` (porta 5174 para não conflitar com outros apps na 5173). Na primeira vez use **Criar conta**; depois **Entrar**.
+Abra `http://localhost:5174` (porta 5174 para não conflitar com outros apps na 5173). Sem `VITE_API_URL`, o app avisa que falta configurar a API. Na primeira vez use **Criar conta**; depois **Entrar**.
 
 ## Deploy na Railway (frontend)
 

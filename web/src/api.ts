@@ -1,4 +1,19 @@
-const API_URL = import.meta.env.VITE_API_URL || '';
+/** Base da API sem barra final (obrigatória em dev e build). */
+const API_URL = String(import.meta.env.VITE_API_URL || '')
+  .trim()
+  .replace(/\/+$/, '');
+
+function parseErrorMessage(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return 'Erro na requisição';
+  try {
+    const j = JSON.parse(trimmed) as { message?: string };
+    if (typeof j.message === 'string' && j.message.length > 0) return j.message;
+  } catch {
+    /* corpo não é JSON */
+  }
+  return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+}
 
 export interface AuthResponse {
   token: string;
@@ -14,6 +29,12 @@ export function setAuthToken(token: string | null) {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  if (!API_URL) {
+    throw new Error(
+      'URL da API não configurada. Crie o arquivo web/.env com: VITE_API_URL=http://localhost:3333 (backend rodando) ou a URL do backend na Railway. Reinicie o npm run dev após salvar.'
+    );
+  }
+
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -37,7 +58,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || 'Erro na requisição');
+    throw new Error(parseErrorMessage(text));
   }
   if (res.status === 204) return undefined as T;
   return res.json();
