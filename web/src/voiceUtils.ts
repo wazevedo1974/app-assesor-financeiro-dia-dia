@@ -1,39 +1,261 @@
 /**
- * Extrai valor e descricao de um texto falado em portugues.
- * Ex.: "Abasteci 50 reais" -> { amount: 50, description: "Abasteci" }
+ * Extrai valor e descrição de um texto falado em português.
+ * Melhorias: valores em formato BR (1.234,56), mais padrões de STT,
+ * números por extenso comuns ("cinquenta reais", "vinte e cinco reais").
  */
-export function parseVoiceText(text: string): { amount: number; description: string; type: 'INCOME' | 'EXPENSE' } | null {
+
+const INCOME_WORDS = /\b(recebi|ganhei|entrada|salário|salario|freela|venda|pagamento recebido)\b/
+
+/** Converte trecho que só tem dígitos e separadores BR/US num número. */
+function parseBrazilianAmountFragment(raw: string): number | null {
+  const s = raw.trim().replace(/\s/g, '')
+  if (!s || !/\d/.test(s)) return null
+
+  if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s)) {
+    return Number(s.replace(/\./g, '').replace(',', '.'))
+  }
+  if (/^\d+,\d{1,2}$/.test(s)) {
+    return Number(s.replace(',', '.'))
+  }
+  if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+    return Number(s.replace(/\./g, ''))
+  }
+  const n = Number(s.replace(/\./g, '').replace(',', '.'))
+  if (Number.isNaN(n) || n <= 0) return null
+  return n
+}
+
+const UNITS: Record<string, number> = {
+  zero: 0,
+  um: 1,
+  uma: 1,
+  dois: 2,
+  duas: 2,
+  três: 3,
+  tres: 3,
+  quatro: 4,
+  cinco: 5,
+  seis: 6,
+  sete: 7,
+  oito: 8,
+  nove: 9,
+  dez: 10,
+  onze: 11,
+  doze: 12,
+  treze: 13,
+  catorze: 14,
+  quatorze: 14,
+  quinze: 15,
+  dezesseis: 16,
+  dezasseis: 16,
+  dezessete: 17,
+  dezassete: 17,
+  dezoito: 18,
+  dezenove: 19,
+  vinte: 20,
+  trinta: 30,
+  quarenta: 40,
+  cinquenta: 50,
+  sessenta: 60,
+  setenta: 70,
+  oitenta: 80,
+  noventa: 90,
+}
+
+const HUNDREDS: Record<string, number> = {
+  cem: 100,
+  cento: 100,
+  duzentos: 200,
+  duzentas: 200,
+  trezentos: 300,
+  trezentas: 300,
+  quatrocentos: 400,
+  quinhentos: 500,
+  seiscentos: 600,
+  setecentos: 700,
+  oitocentos: 800,
+  novecentos: 900,
+}
+
+/** Interpreta número por extenso em PT-BR (faixa útil para gastos: ~0–9999). */
+function parsePortugueseNumberWords(phrase: string): number | null {
+  const t = phrase
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!t) return null
+
+  const tokens = t.split(' ').filter(Boolean)
+  if (tokens.length === 0) return null
+
+  // "mil", "dois mil", "mil e quinhentos"
+  if (tokens.includes('mil')) {
+    const mi = tokens.indexOf('mil')
+    const before = tokens.slice(0, mi)
+    const after = tokens.slice(mi + 1)
+    let thousands = 1
+    if (before.length === 1 && UNITS[before[0]] != null) thousands = UNITS[before[0]]
+    else if (before.length === 1 && before[0] === 'um') thousands = 1
+    else if (before.length === 0) thousands = 1
+    else {
+      const sub = parseHundredsTensUnits(before.join(' '))
+      if (sub != null && sub > 0) thousands = sub
+    }
+    let base = thousands * 1000
+    const rest = after.join(' ')
+    if (rest && rest !== 'e') {
+      const r = parseHundredsTensUnits(rest.replace(/^e\s+/, ''))
+      if (r != null) base += r
+    }
+    return base > 0 ? base : null
+  }
+
+  return parseHundredsTensUnits(t)
+}
+
+function parseHundredsTensUnits(t: string): number | null {
+  const tokens = t.split(' ').filter(Boolean)
+  let total = 0
+  let i = 0
+
+  while (i < tokens.length) {
+    const w = tokens[i]
+    if (HUNDREDS[w] != null) {
+      total += HUNDREDS[w]
+      i += 1
+      continue
+    }
+    if (w === 'e') {
+      i += 1
+      continue
+    }
+    if (UNITS[w] != null) {
+      const u = UNITS[w]
+      if (u >= 20 && i + 2 < tokens.length && tokens[i + 1] === 'e' && UNITS[tokens[i + 2]] != null && UNITS[tokens[i + 2]] < 10) {
+        total += u + UNITS[tokens[i + 2]]
+        i += 3
+        continue
+      }
+      if (u < 20 || u % 10 === 0) {
+        total += u
+        i += 1
+        continue
+      }
+    }
+    if (total > 0) return total
+    return null
+  }
+
+  return total > 0 ? total : null
+}
+
+const NUMBER_KEYWORDS = new Set([
+  ...Object.keys(UNITS),
+  ...Object.keys(HUNDREDS),
+  'e',
+  'mil',
+])
+
+function stripLeadingExpenseVerbs(s: string): string {
+  return s
+    .replace(
+      /^(?:gastei|paguei|abasteci|comprei|dei|pago|fiz|lancei|gasto|paguei|depositei|transferi)\s+/i,
+      ''
+    )
+    .trim()
+}
+
+/** Mantém só o sufixo que parece valor por extenso (ex.: "no mercado cinquenta" → "cinquenta"). */
+function isolateNumberSuffix(phrase: string): string {
+  const raw = phrase
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  const tokens = raw.split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return ''
+
+  let start = tokens.length
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const w = tokens[i]
+    if (NUMBER_KEYWORDS.has(w)) {
+      start = i
+      continue
+    }
+    break
+  }
+  if (start >= tokens.length) return ''
+  return tokens.slice(start).join(' ')
+}
+
+/** Procura valor em dígitos ou por extenso antes de "reais"/"real". */
+function extractAmountFromPortuguese(text: string): number | null {
   const t = text.trim().toLowerCase()
   if (!t) return null
 
-  const incomeWords = /\b(recebi|ganhei|entrada|salário|salario|freela|venda|pagamento recebido)\b/
-  const type: 'INCOME' | 'EXPENSE' = incomeWords.test(t) ? 'INCOME' : 'EXPENSE'
-
-  const patterns = [
-    /(\d{1,6}(?:[.,]\d{1,2})?)\s*reais?/i,
-    /r\$\s*(\d{1,6}(?:[.,]\d{1,2})?)/i,
-    /(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:no|de|em|na|no)\s+/i,
-    /(?:gastei|paguei|abasteci|gasto)\s*(\d{1,6}(?:[.,]\d{1,2})?)/i,
-    /(?:recebi|ganhei)\s*(\d{1,6}(?:[.,]\d{1,2})?)/i,
+  const digitPatterns: RegExp[] = [
+    /(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)\s*reais?\b/i,
+    /(\d{1,6}(?:[.,]\d{1,2})?)\s*reais?\b/i,
+    /\br\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d{1,6}(?:[.,]\d{1,2})?)\b/i,
+    /(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)\s*(?:no|de|em|na)\s+\w+/i,
+    /(?:gastei|paguei|abasteci|gasto|comprei|paguei)\s*(?:de\s+|por\s+)?(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d{1,6}(?:[.,]\d{1,2})?)/i,
+    /(?:recebi|ganhei)\s*(?:de\s+|por\s+)?(\d{1,6}(?:[.,]\d{1,2})?)/i,
+    /\b(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)\b/,
+    /\b(\d{1,6}(?:[.,]\d{1,2})?)\s+(?:no|de|em|na)\s+/i,
     /^(\d{1,6}(?:[.,]\d{1,2})?)\s/,
-    /(\d{1,6}(?:[.,]\d{1,2})?)$/,
+    /\b(\d{1,6}(?:[.,]\d{1,2})?)$/,
   ]
-  let amount = 0
-  for (const p of patterns) {
+
+  for (const p of digitPatterns) {
     const m = t.match(p)
-    if (m) {
-      amount = Number(m[1].replace('.', '').replace(',', '.'))
-      if (!Number.isNaN(amount) && amount > 0) break
+    if (m?.[1]) {
+      const n = parseBrazilianAmountFragment(m[1])
+      if (n != null && n > 0) return n
     }
   }
-  if (amount <= 0) return null
+
+  const beforeReais = t.split(/\b(reais|real)\b/i)[0]?.trim()
+  if (beforeReais && beforeReais.length > 1) {
+    const cleaned = stripLeadingExpenseVerbs(beforeReais)
+    let fromWords = parsePortugueseNumberWords(cleaned)
+    if (fromWords == null || fromWords <= 0) {
+      fromWords = parsePortugueseNumberWords(isolateNumberSuffix(beforeReais))
+    }
+    if (fromWords != null && fromWords > 0) return fromWords
+  }
+
+  const isolated = isolateNumberSuffix(t)
+  if (isolated.length > 0) {
+    const n = parsePortugueseNumberWords(isolated)
+    if (n != null && n > 0) return n
+  }
+
+  return null
+}
+
+export function parseVoiceText(text: string): { amount: number; description: string; type: 'INCOME' | 'EXPENSE' } | null {
+  const raw = text.trim()
+  if (!raw) return null
+
+  const t = raw.toLowerCase()
+  const type: 'INCOME' | 'EXPENSE' = INCOME_WORDS.test(t) ? 'INCOME' : 'EXPENSE'
+
+  const amount = extractAmountFromPortuguese(raw)
+  if (amount == null || amount <= 0) return null
 
   let description = t
+    .replace(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?\s*reais?/gi, '')
     .replace(/\d{1,6}(?:[.,]\d{1,2})?\s*reais?/gi, '')
-    .replace(/r\$\s*\d{1,6}(?:[.,]\d{1,2})?/gi, '')
-    .replace(/\b(recebi|ganhei|gastei|paguei|abasteci|gasto|no|de|em|na|no|reais?)\b/gi, '')
+    .replace(/r\$\s*[\d.,]+/gi, '')
+    .replace(/\b(recebi|ganhei|gastei|paguei|abasteci|gasto|comprei|no|de|em|na|reais?|real|por|de)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
+
+  // Remove fragmentos de números por extenso da descrição (heurística)
+  description = description.replace(/\b(vinte|trinta|quarenta|cinquenta|cem|mil)\b(\s+e\s+\w+)*/gi, '').replace(/\s+/g, ' ').trim()
+
   if (!description) description = type === 'EXPENSE' ? 'Gasto por voz' : 'Receita por voz'
 
   return { amount, description: description.slice(0, 200), type }
@@ -61,7 +283,7 @@ export function suggestCategoryId(
     [['academia', 'treino'], ['Academia']],
     [['luz', 'energia'], ['Energia']],
     [['agua'], ['Agua']],
-    [['salario', 'recebi', 'ganhei'], ['Salario']],
+    [['salario', 'recebi', 'ganhei'], ['Salário', 'Salario']],
     [['freela', 'freelance', 'extra', 'venda'], ['Renda extra']],
   ]
   for (const [keywords, names] of byName) {

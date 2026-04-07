@@ -24,6 +24,8 @@ interface SpeechRecognitionInstance {
   stop: () => void
   lang: string
   continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
   onresult: ((e: unknown) => void) | null
   onend: (() => void) | null
   onerror: ((e: { error: string }) => void) | null
@@ -1099,6 +1101,8 @@ function App() {
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+  const voiceSpokenRef = useRef('')
+  const voiceAlternativesRef = useRef<string[]>([])
 
   const handleVoiceClick = useCallback(async () => {
     if (!SpeechRecognitionCtor) {
@@ -1113,24 +1117,71 @@ function App() {
     }
     setVoiceError(null)
     setVoiceMessage(null)
+    voiceSpokenRef.current = ''
+    voiceAlternativesRef.current = []
+
     const rec = new SpeechRecognitionCtor()
     rec.lang = 'pt-BR'
-    rec.continuous = false
-    rec.onresult = async (e: unknown) => {
-      const ev = e as { results: ArrayLike<{ transcript: string }> }
-      const first = ev.results?.[0]
-      const transcript = first?.transcript ?? ''
-      rec.stop()
+    rec.continuous = true
+    rec.interimResults = false
+    rec.maxAlternatives = 5
+
+    rec.onresult = (e: unknown) => {
+      const ev = e as {
+        results: {
+          length: number
+          [i: number]: { length: number; [j: number]: { transcript: string } }
+        }
+      }
+      let full = ''
+      for (let i = 0; i < ev.results.length; i++) {
+        const seg = ev.results[i]?.[0]?.transcript ?? ''
+        full += seg
+      }
+      voiceSpokenRef.current = full.trim()
+
+      const alts: string[] = []
+      const r0 = ev.results[0]
+      if (r0 && r0.length > 1) {
+        for (let j = 0; j < r0.length; j++) {
+          const t = r0[j]?.transcript?.trim()
+          if (t) alts.push(t)
+        }
+      }
+      voiceAlternativesRef.current = alts
+    }
+
+    rec.onend = async () => {
       recognitionRef.current = null
       setIsListening(false)
-      const parsed = parseVoiceText(transcript)
+
+      const raw = voiceSpokenRef.current
+      const alts = voiceAlternativesRef.current
+      voiceSpokenRef.current = ''
+      voiceAlternativesRef.current = []
+
+      const candidates = [...new Set([raw, ...alts].filter(Boolean))]
+      let parsed: ReturnType<typeof parseVoiceText> = null
+      let usedTranscript = raw
+      for (const cand of candidates) {
+        parsed = parseVoiceText(cand)
+        if (parsed) {
+          usedTranscript = cand
+          break
+        }
+      }
+
       if (!parsed) {
-        setVoiceMessage('Não entendi o valor. Tente: "Abasteci 50 reais" ou "30 no mercado".')
+        const preview = raw ? `"${raw}"` : '(não foi possível ouvir — verifique o microfone ou permissões)'
+        setVoiceMessage(
+          `Ouvi: ${preview}. Não identifiquei o valor. Diga o número com "reais" (ex.: 45 reais) ou por extenso (ex.: cinquenta reais no mercado).`
+        )
         return
       }
       try {
         const categories = await api.listCategories()
-        const categoryId = suggestCategoryId(transcript, categories) || suggestCategoryId(parsed.description, categories)
+        const categoryId =
+          suggestCategoryId(usedTranscript, categories) || suggestCategoryId(parsed.description, categories)
         await api.createTransaction({
           amount: parsed.amount,
           type: parsed.type,
@@ -1145,18 +1196,21 @@ function App() {
         setVoiceError(err instanceof Error ? err.message : 'Erro ao registrar.')
       }
     }
-    rec.onend = () => {
+
+    rec.onerror = (errEv: { error: string }) => {
       recognitionRef.current = null
       setIsListening(false)
+      voiceSpokenRef.current = ''
+      if (errEv.error === 'no-speech') {
+        setVoiceMessage('Não detectei fala. Tente de novo e fale perto do microfone.')
+        return
+      }
+      if (errEv.error !== 'aborted') setVoiceError('Erro no microfone. Tente de novo.')
     }
-    rec.onerror = (e: { error: string }) => {
-      recognitionRef.current = null
-      setIsListening(false)
-      if (e.error !== 'aborted') setVoiceError('Erro no microfone. Tente de novo.')
-    }
+
     recognitionRef.current = rec
     setIsListening(true)
-    setVoiceMessage('Fale agora: ex. "Abasteci 50 reais"...')
+    setVoiceMessage('Fale agora (pode fazer pausas). Ex.: "gastei cinquenta reais no mercado" ou "45 reais de gasolina".')
     rec.start()
   }, [isListening])
 
