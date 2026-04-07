@@ -87,6 +87,11 @@ export const api = {
     setAuthToken(data.token);
     return data;
   },
+  async createWhatsAppLinkCode() {
+    return request<{ code: string; expiresAt: string; hint: string }>('/auth/whatsapp/link-code', {
+      method: 'POST',
+    });
+  },
   async getSummary(from?: string, to?: string) {
     const params = new URLSearchParams();
     if (from) params.append('from', from);

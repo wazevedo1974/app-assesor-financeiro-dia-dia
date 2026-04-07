@@ -155,6 +155,8 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
   const [txEditDate, setTxEditDate] = useState('')
   const [txEditCategoryId, setTxEditCategoryId] = useState('')
   const [txEditType, setTxEditType] = useState<'INCOME'|'EXPENSE'>('EXPENSE')
+  const [waLink, setWaLink] = useState<{ code: string; expiresAt: string; hint: string } | null>(null)
+  const [waLoading, setWaLoading] = useState(false)
 
   const { from, to } = getMonthBounds(selectedMonth)
   const categoriesContas = categories.filter((c) => c.kind === 'EXPENSE_FIXED' || c.kind === 'EXPENSE_VARIABLE')
@@ -250,6 +252,20 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
     setMenuOpenId(null)
   }
 
+  async function handleWhatsAppCode() {
+    setWaLoading(true)
+    setWaLink(null)
+    try {
+      const r = await api.createWhatsAppLinkCode()
+      setWaLink(r)
+    } catch (e) {
+      console.error(e)
+      alert(e instanceof Error ? e.message : 'Não foi possível gerar o código.')
+    } finally {
+      setWaLoading(false)
+    }
+  }
+
   function prevMonth() {
     const [y, m] = selectedMonth.split('-').map(Number)
     const prev = m === 1 ? [y - 1, 12] : [y, m - 1]
@@ -318,6 +334,22 @@ function Resumo({ selectedMonth, setSelectedMonth }: { selectedMonth: string; se
           </button>
         ))}
       </div>
+
+      <section className="whatsapp-panel" aria-label="Ligar WhatsApp">
+        <h3 className="whatsapp-panel-title">WhatsApp</h3>
+        <p className="whatsapp-panel-desc">
+          Gere um código e envie no WhatsApp da sua API (número configurado na Meta) a mensagem indicada para vincular este painel ao seu telefone.
+        </p>
+        <button type="button" className="btn-whatsapp" onClick={handleWhatsAppCode} disabled={waLoading}>
+          {waLoading ? 'Gerando…' : 'Gerar código para WhatsApp'}
+        </button>
+        {waLink && (
+          <div className="whatsapp-code-box">
+            <p className="whatsapp-code-hint">{waLink.hint}</p>
+            <p className="whatsapp-code-expires">Válido até {new Date(waLink.expiresAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+          </div>
+        )}
+      </section>
 
       <div className="cards">
         <div className="card">

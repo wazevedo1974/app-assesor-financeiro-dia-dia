@@ -1,8 +1,10 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { prisma } from "../prisma";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { CategoryKind } from "@prisma/client";
+import { AuthRequest, authMiddleware } from "../middleware/auth";
 
 export const authRouter = Router();
 
@@ -99,6 +101,30 @@ authRouter.post("/login", async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Erro ao autenticar." });
+  }
+});
+
+authRouter.post("/whatsapp/link-code", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const ttlMin = 15;
+    const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
+
+    await prisma.whatsAppLinkCode.deleteMany({ where: { userId } });
+
+    const code = String(crypto.randomInt(100000, 1000000));
+    await prisma.whatsAppLinkCode.create({
+      data: { userId, code, expiresAt },
+    });
+
+    return res.json({
+      code,
+      expiresAt: expiresAt.toISOString(),
+      hint: "No WhatsApp, envie: vincular " + code,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro ao gerar código WhatsApp." });
   }
 });
 

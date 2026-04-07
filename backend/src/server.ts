@@ -6,15 +6,24 @@ import { transactionsRouter } from "./routes/transactions";
 import { billsRouter } from "./routes/bills";
 import { categoriesRouter } from "./routes/categories";
 import { adviceRouter } from "./routes/advice";
+import { whatsappWebhookRouter } from "./routes/whatsappWebhook";
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req: express.Request & { rawBody?: Buffer }, _res, buf: Buffer) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+app.use("/webhook/whatsapp", whatsappWebhookRouter);
 
 app.use("/auth", authRouter);
 app.use("/transactions", transactionsRouter);

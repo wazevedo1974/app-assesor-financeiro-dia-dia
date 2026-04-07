@@ -35,6 +35,30 @@ model User {
   transactions Transaction[]
   bills        Bill[]
   categories   Category[]
+
+  whatsAppLinkCodes   WhatsAppLinkCode[]
+  whatsAppConnection  WhatsAppConnection?
+}
+
+// Código de pareamento (gerado no painel); expira em poucos minutos.
+model WhatsAppLinkCode {
+  id        String   @id @default(cuid())
+  code      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([code])
+}
+
+// Número WhatsApp (wa_id da Meta) ligado a um utilizador.
+model WhatsAppConnection {
+  id        String   @id @default(cuid())
+  waId      String   @unique
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }
 
 model Category {
