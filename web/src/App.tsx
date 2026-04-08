@@ -19,16 +19,29 @@ import './App.css'
 const CHART_COLORS_PIE = ['#3b82f6', '#f97316']
 const tooltipDark = { background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0' }
 
+interface SpeechRecognitionResultLike {
+  isFinal: boolean
+  0: { transcript: string }
+  length: number
+  [j: number]: { transcript: string }
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number
+  results: { length: number; [i: number]: SpeechRecognitionResultLike }
+}
+
 interface SpeechRecognitionInstance {
   start: () => void
   stop: () => void
+  abort: () => void
   lang: string
   continuous: boolean
   interimResults: boolean
   maxAlternatives: number
   onresult: ((e: unknown) => void) | null
   onend: (() => void) | null
-  onerror: ((e: { error: string }) => void) | null
+  onerror: ((e: { error: string; message?: string }) => void) | null
 }
 const SpeechRecognitionCtor = typeof window !== 'undefined' && (
   (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionInstance }).SpeechRecognition ||
@@ -1099,120 +1112,181 @@ function App() {
   const [isListening, setIsListening] = useState(false)
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null)
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [voiceLiveText, setVoiceLiveText] = useState('')
+  const [voiceDraftOpen, setVoiceDraftOpen] = useState(false)
+  const [voiceDraftText, setVoiceDraftText] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
-  const voiceSpokenRef = useRef('')
+  const voiceFinalRef = useRef('')
   const voiceAlternativesRef = useRef<string[]>([])
 
-  const handleVoiceClick = useCallback(async () => {
+  const submitVoiceTransaction = useCallback(async (usedTranscript: string, parsed: NonNullable<ReturnType<typeof parseVoiceText>>) => {
+    const categories = await api.listCategories()
+    const categoryId =
+      suggestCategoryId(usedTranscript, categories) || suggestCategoryId(parsed.description, categories)
+    await api.createTransaction({
+      amount: parsed.amount,
+      type: parsed.type,
+      description: parsed.description || undefined,
+      categoryId: categoryId || undefined,
+      date: new Date().toISOString().slice(0, 10),
+    })
+    const label = parsed.type === 'INCOME' ? 'Receita' : 'Despesa'
+    setVoiceMessage(`${label} de R$ ${formatBRL(parsed.amount)} registrada. Veja em Transações.`)
+    window.dispatchEvent(new Event('assessor:refresh'))
+  }, [])
+
+  const tryParseAndSubmit = useCallback(
+    async (raw: string) => {
+      const t = raw.trim()
+      const candidates = [...new Set([t, ...voiceAlternativesRef.current].filter(Boolean))]
+      let parsed: ReturnType<typeof parseVoiceText> = null
+      let used = t
+      for (const cand of candidates) {
+        parsed = parseVoiceText(cand)
+        if (parsed) {
+          used = cand
+          break
+        }
+      }
+      if (!parsed) return false
+      try {
+        await submitVoiceTransaction(used, parsed)
+        return true
+      } catch (err) {
+        setVoiceError(err instanceof Error ? err.message : 'Erro ao registrar.')
+        return true
+      }
+    },
+    [submitVoiceTransaction]
+  )
+
+  const handleVoiceClick = useCallback(() => {
     if (!SpeechRecognitionCtor) {
-      setVoiceError('Reconhecimento de voz não disponível neste navegador. Use Chrome ou Edge.')
+      setVoiceError('Reconhecimento de voz não disponível neste navegador. Use Chrome ou Edge no computador, ou digite em "Corrigir texto" abaixo.')
+      return
+    }
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setVoiceError('O microfone só funciona em HTTPS (ou localhost). Abra o site com endereço seguro.')
       return
     }
     if (isListening) {
-      recognitionRef.current?.stop()
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        /* ignore */
+      }
       recognitionRef.current = null
       setIsListening(false)
+      setVoiceLiveText('')
       return
     }
     setVoiceError(null)
     setVoiceMessage(null)
-    voiceSpokenRef.current = ''
+    setVoiceLiveText('')
+    voiceFinalRef.current = ''
     voiceAlternativesRef.current = []
 
     const rec = new SpeechRecognitionCtor()
     rec.lang = 'pt-BR'
     rec.continuous = true
-    rec.interimResults = false
+    rec.interimResults = true
     rec.maxAlternatives = 5
 
     rec.onresult = (e: unknown) => {
-      const ev = e as {
-        results: {
-          length: number
-          [i: number]: { length: number; [j: number]: { transcript: string } }
+      const ev = e as SpeechRecognitionEventLike
+      let interim = ''
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i]
+        const piece = r[0]?.transcript ?? ''
+        if (r.isFinal) {
+          voiceFinalRef.current += piece
+          const nAlt = typeof r.length === 'number' ? r.length : 1
+          if (nAlt > 1) {
+            const alts: string[] = []
+            for (let j = 0; j < nAlt; j++) {
+              const alt = r[j]?.transcript?.trim()
+              if (alt) alts.push(alt)
+            }
+            if (alts.length) voiceAlternativesRef.current = alts
+          }
+        } else {
+          interim += piece
         }
       }
-      let full = ''
-      for (let i = 0; i < ev.results.length; i++) {
-        const seg = ev.results[i]?.[0]?.transcript ?? ''
-        full += seg
-      }
-      voiceSpokenRef.current = full.trim()
-
-      const alts: string[] = []
-      const r0 = ev.results[0]
-      if (r0 && r0.length > 1) {
-        for (let j = 0; j < r0.length; j++) {
-          const t = r0[j]?.transcript?.trim()
-          if (t) alts.push(t)
-        }
-      }
-      voiceAlternativesRef.current = alts
+      setVoiceLiveText(`${voiceFinalRef.current}${interim}`.trim())
     }
 
     rec.onend = async () => {
       recognitionRef.current = null
       setIsListening(false)
+      setVoiceLiveText('')
 
-      const raw = voiceSpokenRef.current
-      const alts = voiceAlternativesRef.current
-      voiceSpokenRef.current = ''
-      voiceAlternativesRef.current = []
+      const raw = voiceFinalRef.current.trim()
+      voiceFinalRef.current = ''
 
-      const candidates = [...new Set([raw, ...alts].filter(Boolean))]
-      let parsed: ReturnType<typeof parseVoiceText> = null
-      let usedTranscript = raw
-      for (const cand of candidates) {
-        parsed = parseVoiceText(cand)
-        if (parsed) {
-          usedTranscript = cand
-          break
-        }
-      }
+      const ok = await tryParseAndSubmit(raw)
+      if (ok) return
 
-      if (!parsed) {
-        const preview = raw ? `"${raw}"` : '(não foi possível ouvir — verifique o microfone ou permissões)'
+      setVoiceDraftText(raw)
+      setVoiceDraftOpen(true)
+      if (!raw) {
         setVoiceMessage(
-          `Ouvi: ${preview}. Não identifiquei o valor. Diga o número com "reais" (ex.: 45 reais) ou por extenso (ex.: cinquenta reais no mercado).`
+          'Não captei fala. Use a caixa abaixo para digitar (ex.: 45 reais mercado) ou fale de novo após permitir o microfone.'
         )
-        return
-      }
-      try {
-        const categories = await api.listCategories()
-        const categoryId =
-          suggestCategoryId(usedTranscript, categories) || suggestCategoryId(parsed.description, categories)
-        await api.createTransaction({
-          amount: parsed.amount,
-          type: parsed.type,
-          description: parsed.description || undefined,
-          categoryId: categoryId || undefined,
-          date: new Date().toISOString().slice(0, 10),
-        })
-        const label = parsed.type === 'INCOME' ? 'Receita' : 'Despesa'
-        setVoiceMessage(`${label} de R$ ${formatBRL(parsed.amount)} registrada. Veja em Transações.`)
-        window.dispatchEvent(new Event('assessor:refresh'))
-      } catch (err) {
-        setVoiceError(err instanceof Error ? err.message : 'Erro ao registrar.')
+      } else {
+        setVoiceMessage(
+          `Texto reconhecido: "${raw}". Ajuste na caixa abaixo se estiver errado e confirme — ou inclua "reais" e o valor (ex.: 30 reais).`
+        )
       }
     }
 
     rec.onerror = (errEv: { error: string }) => {
       recognitionRef.current = null
       setIsListening(false)
-      voiceSpokenRef.current = ''
-      if (errEv.error === 'no-speech') {
-        setVoiceMessage('Não detectei fala. Tente de novo e fale perto do microfone.')
-        return
+      setVoiceLiveText('')
+      voiceFinalRef.current = ''
+
+      const map: Record<string, string> = {
+        'no-speech': 'Nenhuma fala detetada. Fale logo após clicar, mais perto do microfone, ou digite o gasto na caixa "Corrigir texto".',
+        aborted: '',
+        'not-allowed': 'Microfone bloqueado. Clique no cadeado na barra do endereço e permita o microfone.',
+        'audio-capture': 'Não foi possível aceder ao microfone (ocupado ou inexistente).',
+        network: 'Erro de rede no reconhecimento de voz. Verifique a internet ou tente digitar o gasto na caixa abaixo.',
+        'service-not-allowed': 'Serviço de voz indisponível neste dispositivo ou rede. Use a caixa de texto abaixo.',
       }
-      if (errEv.error !== 'aborted') setVoiceError('Erro no microfone. Tente de novo.')
+      const msg = map[errEv.error]
+      if (errEv.error === 'aborted') return
+      setVoiceError(msg || `Erro de voz (${errEv.error}). Tente digitar o lançamento na caixa abaixo.`)
     }
 
     recognitionRef.current = rec
     setIsListening(true)
-    setVoiceMessage('Fale agora (pode fazer pausas). Ex.: "gastei cinquenta reais no mercado" ou "45 reais de gasolina".')
-    rec.start()
-  }, [isListening])
+    setVoiceMessage('Fale agora. Ex.: "gastei 45 reais no mercado". Pode fazer pausas; clique em Parar quando terminar.')
+    try {
+      rec.start()
+    } catch (err) {
+      recognitionRef.current = null
+      setIsListening(false)
+      setVoiceError(err instanceof Error ? err.message : 'Não foi possível iniciar o microfone.')
+    }
+  }, [isListening, tryParseAndSubmit])
+
+  const handleVoiceDraftSubmit = useCallback(async () => {
+    const parsed = parseVoiceText(voiceDraftText)
+    if (!parsed) {
+      setVoiceError('Ainda não identifiquei o valor. Ex.: "50 reais" ou "vinte reais de padaria".')
+      return
+    }
+    try {
+      await submitVoiceTransaction(voiceDraftText, parsed)
+      setVoiceDraftOpen(false)
+      setVoiceDraftText('')
+      setVoiceError(null)
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : 'Erro ao registrar.')
+    }
+  }, [voiceDraftText, submitVoiceTransaction])
 
   const handleExportPdf = useCallback(async () => {
     const ym = selectedMonth
@@ -1304,6 +1378,19 @@ function App() {
           <button type="button" className="btn-voice" onClick={handleVoiceClick} title="Registrar por voz" aria-label={isListening ? 'Parar gravação' : 'Registrar por voz'}>
             {isListening ? '🎤 Parar' : '🎤 Voz'}
           </button>
+          <button
+            type="button"
+            className="btn-voice-text"
+            onClick={() => {
+              setVoiceDraftOpen(true)
+              setVoiceDraftText('')
+              setVoiceError(null)
+              setVoiceMessage('Digite o gasto no formato: valor + reais + descrição (ex.: 45 reais mercado).')
+            }}
+            title="Sem microfone ou voz falhou"
+          >
+            Digitar gasto
+          </button>
           <button type="button" className="btn-export" onClick={handleExportPdf} disabled={pdfLoading} title="Baixar PDF do mês">
             {pdfLoading ? '...' : 'Exportar PDF'}
           </button>
@@ -1316,6 +1403,42 @@ function App() {
       {(voiceMessage || voiceError) && (
         <div className={`voice-feedback ${voiceError ? 'error' : ''}`} role="alert">
           {voiceError || voiceMessage}
+        </div>
+      )}
+      {isListening && voiceLiveText && (
+        <div className="voice-live" aria-live="polite">
+          <span className="voice-live-label">A ouvir:</span> {voiceLiveText}
+        </div>
+      )}
+      {voiceDraftOpen && (
+        <div className="voice-draft">
+          <label htmlFor="voice-draft-input" className="voice-draft-label">
+            Corrigir ou digitar o gasto
+          </label>
+          <textarea
+            id="voice-draft-input"
+            className="voice-draft-input"
+            value={voiceDraftText}
+            onChange={(e) => setVoiceDraftText(e.target.value)}
+            rows={3}
+            placeholder="Ex.: 45 reais mercado ou gastei 30 reais de gasolina"
+            autoComplete="off"
+          />
+          <div className="voice-draft-actions">
+            <button type="button" className="btn-voice-confirm" onClick={handleVoiceDraftSubmit}>
+              Registrar
+            </button>
+            <button
+              type="button"
+              className="btn-voice-cancel"
+              onClick={() => {
+                setVoiceDraftOpen(false)
+                setVoiceDraftText('')
+              }}
+            >
+              Fechar
+            </button>
+          </div>
         </div>
       )}
       <nav className="tabs main-tabs">
