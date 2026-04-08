@@ -1119,6 +1119,14 @@ function App() {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const voiceFinalRef = useRef('')
   const voiceAlternativesRef = useRef<string[]>([])
+  const voiceMaxSessionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function clearVoiceSessionTimer() {
+    if (voiceMaxSessionRef.current != null) {
+      clearTimeout(voiceMaxSessionRef.current)
+      voiceMaxSessionRef.current = null
+    }
+  }
 
   const submitVoiceTransaction = useCallback(async (usedTranscript: string, parsed: NonNullable<ReturnType<typeof parseVoiceText>>) => {
     const categories = await api.listCategories()
@@ -1171,6 +1179,7 @@ function App() {
       return
     }
     if (isListening) {
+      clearVoiceSessionTimer()
       try {
         recognitionRef.current?.stop()
       } catch {
@@ -1189,7 +1198,9 @@ function App() {
 
     const rec = new SpeechRecognitionCtor()
     rec.lang = 'pt-BR'
-    rec.continuous = true
+    // false = a sessão termina sozinha após uma pausa no fim da frase (onend dispara).
+    // true deixa o microfone aberto até Parar — muitos browsers não fecham só com silêncio.
+    rec.continuous = false
     rec.interimResults = true
     rec.maxAlternatives = 5
 
@@ -1218,6 +1229,7 @@ function App() {
     }
 
     rec.onend = async () => {
+      clearVoiceSessionTimer()
       recognitionRef.current = null
       setIsListening(false)
       setVoiceLiveText('')
@@ -1242,6 +1254,7 @@ function App() {
     }
 
     rec.onerror = (errEv: { error: string }) => {
+      clearVoiceSessionTimer()
       recognitionRef.current = null
       setIsListening(false)
       setVoiceLiveText('')
@@ -1262,9 +1275,21 @@ function App() {
 
     recognitionRef.current = rec
     setIsListening(true)
-    setVoiceMessage('Fale agora. Ex.: "gastei 45 reais no mercado". Pode fazer pausas; clique em Parar quando terminar.')
+    setVoiceMessage(
+      'Fale agora. A gravação termina sozinha quando fizer uma pausa no fim da frase — ou clique em Parar para cortar antes.'
+    )
     try {
       rec.start()
+      clearVoiceSessionTimer()
+      voiceMaxSessionRef.current = setTimeout(() => {
+        voiceMaxSessionRef.current = null
+        if (recognitionRef.current !== rec) return
+        try {
+          rec.stop()
+        } catch {
+          /* ignore */
+        }
+      }, 55_000)
     } catch (err) {
       recognitionRef.current = null
       setIsListening(false)
